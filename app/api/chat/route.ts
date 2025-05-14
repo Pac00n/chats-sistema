@@ -87,12 +87,10 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    // Log the full body before destructuring
     console.log("[API Chat] Full request body received:", JSON.stringify(body, null, 2));
 
     const { assistantId, message, imageBase64, threadId: existingThreadId, employeeToken } = body;
     
-    // Log for the destructured data
     console.log(
       `[API Chat] Received data (destructured): assistantId=${assistantId}, message=${message ? message.substring(0, 30) + "..." : "N/A"}, imageBase64=${imageBase64 ? "Present" : "Absent"}, threadId=${existingThreadId}, employeeToken=${employeeToken}`
     );
@@ -193,6 +191,7 @@ export async function POST(req: NextRequest) {
           assistant_id: assistantConfig.id, 
           employee_token: employeeToken, 
           image_file_id: fileId,
+          created_at: new Date().toISOString(), // Explicitly set created_at
         };
         const { error: userMessageError } = await supabase
           .from('chat_messages') 
@@ -274,6 +273,7 @@ export async function POST(req: NextRequest) {
             content: assistantReply,
             assistant_id: assistantConfig.id, 
             employee_token: employeeToken,
+            created_at: new Date().toISOString(), // Explicitly set created_at
         };
         const { error: assistantMessageError } = await supabase
             .from('chat_messages') 
