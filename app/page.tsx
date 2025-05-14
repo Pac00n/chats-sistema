@@ -22,22 +22,24 @@ export default function Home() {
   const handleCopyLink = async (assistant: Assistant) => {
     console.log("[HomePage] handleCopyLink triggered for assistant ID:", assistant.id, "Name:", assistant.name);
     const employeeToken = generateUUID();
-    const url = `${window.location.origin}/chat/${assistant.id}?employeeToken=${employeeToken}`;
-    console.log("[HomePage] Generated URL to copy:", url);
+    const chatUrl = `/chat/${assistant.id}?employeeToken=${employeeToken}`;
+    const fullUrl = `${window.location.origin}${chatUrl}`;
+    console.log("[HomePage] Generated URL to copy:", fullUrl);
     try {
-      await navigator.clipboard.writeText(url);
-      console.log("[HomePage] URL copied to clipboard. Setting copiedAssistantId to:", assistant.id);
-      console.log("[HomePage] Current copiedAssistantId BEFORE set:", copiedAssistantId); // Log adicional
+      await navigator.clipboard.writeText(fullUrl);
+      alert(`Enlace copiado al portapapeles (para ${assistant.name}): ${fullUrl}`); // ALERTA DE PRUEBA
+      console.log("[HomePage] URL copied. Current copiedAssistantId BEFORE set:", copiedAssistantId, "Attempting to set to:", assistant.id);
       setCopiedAssistantId(assistant.id);
-      // Este log se ejecutará ANTES de que el estado realmente cambie debido a la naturaleza asíncrona de setState
-      // Para ver el estado DESPUÉS del cambio, necesitarías un useEffect o loguear en el render
       setTimeout(() => {
-        console.log("[HomePage] Resetting copiedAssistantId (was " + assistant.id + ") to null after timeout");
+        // Este log se ejecutará cuando el timeout se cumpla.
+        // Para ver el estado *después* de setCopiedAssistantId, necesitaríamos un useEffect o loguear en el render.
+        console.log(`[HomePage] Resetting copiedAssistantId (which was ${assistant.id} when timeout was set) to null after timeout.`);
         setCopiedAssistantId(null);
       }, 2000);
     } catch (err) {
-      console.error("Failed to copy: ", err);
-      alert("Error al copiar el enlace. Inténtalo manualmente.");
+      console.error("Failed to copy to clipboard: ", err);
+      alert(`Error al copiar el enlace para ${assistant.name}. Inténtalo manualmente:
+${fullUrl}`);
     }
   };
 
@@ -86,6 +88,7 @@ export default function Home() {
                   transition={{ duration: 0.5, delay: index * 0.1 + groupIndex * 0.2 }}
                   className="flex flex-col"
                 >
+                  {/* El Link ahora solo envuelve la tarjeta, no el botón de copiar */}
                   <Link href={`/chat/${assistant.id}`} className="block h-full flex-grow">
                     <Card className="h-full bg-white border-slate-200 hover:border-sistema-primary transition-all duration-300 hover:shadow-lg hover:shadow-sistema-primary/10 cursor-pointer overflow-hidden group">
                       <div className="absolute inset-0 bg-gradient-to-br from-sistema-primary/5 to-sistema-secondary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
@@ -110,17 +113,19 @@ export default function Home() {
                   <div className="mt-2 text-center">
                     <Button
                       onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        handleCopyLink(assistant)
+                        // No necesitamos e.preventDefault() o e.stopPropagation() aquí 
+                        // si el botón está fuera del Link que causa la navegación.
+                        // Sin embargo, si el Link sigue envolviendo al botón, son necesarios.
+                        // Por seguridad, los mantenemos si la estructura no ha cambiado mucho.
+                        e.preventDefault(); 
+                        e.stopPropagation();
+                        handleCopyLink(assistant);
                       }}
                       variant="outline"
                       size="sm"
                       className="border-sistema-primary text-sistema-primary hover:bg-sistema-primary/10 hover:text-sistema-primary-dark transition-colors"
                     >
                       <Copy className="mr-2 h-4 w-4" />
-                      {/* Log para ver la comparación directamente en el JSX para depuración */}
-                      {/* {console.log("[HomePage] Button render - copiedAssistantId:", copiedAssistantId, "assistant.id:", assistant.id, "Comparison:", copiedAssistantId === assistant.id)} */}
                       {copiedAssistantId === assistant.id ? "¡Enlace Copiado!" : "Copiar Enlace Empleado"}
                     </Button>
                   </div>
