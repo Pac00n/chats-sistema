@@ -35,6 +35,9 @@ function ChatPageContent() {
   const assistant = getAssistantById(assistantId)
   const employeeToken = searchParams.get("employeeToken")
 
+  // LOG PARA DEPURAR EL VALOR DE employeeToken AL RENDERIZAR/ACTUALIZAR
+  console.log("[ChatPageContent] employeeToken from URL params:", employeeToken); 
+
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [imageBase64, setImageBase64] = useState<string | null>(null)
@@ -124,7 +127,6 @@ function ChatPageContent() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // Log the employeeToken value right before the check
     console.log("[ChatPage] handleSubmit: employeeToken value:", employeeToken);
 
     if ((!input.trim() && !imageBase64) || isLoading || !employeeToken) {
@@ -151,7 +153,6 @@ function ChatPageContent() {
     setImageBase64(null)
     setIsLoading(true)
 
-    // Log the payload being sent to the backend
     const payload = {
       assistantId: assistant?.id,
       message: currentInput,
