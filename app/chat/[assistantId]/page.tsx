@@ -125,33 +125,45 @@ function ChatPageContent() {
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
 
-    console.log("[ChatPage] handleSubmit: employeeToken value:", employeeToken);
+    console.log("[ChatPage] handleSubmit: employeeToken value at start of function:", employeeToken);
+    console.log("[ChatPage] handleSubmit: input value:", input);
+    console.log("[ChatPage] handleSubmit: imageBase64 present:", !!imageBase64);
+    console.log("[ChatPage] handleSubmit: isLoading state:", isLoading);
 
     if ((!input.trim() && !imageBase64) || isLoading || !employeeToken) {
-      console.warn("[ChatPage] handleSubmit: Submission prevented. Input empty, loading, or no employeeToken.");
+      console.warn("[ChatPage] handleSubmit: Submission prevented due to guard condition.");
+      if (!input.trim() && !imageBase64) {
+        console.warn("[ChatPage] Reason: Input empty AND no image.");
+      }
+      if (isLoading) {
+        console.warn("[ChatPage] Reason: isLoading is true.");
+      }
       if (!employeeToken) {
+        console.warn("[ChatPage] Reason: employeeToken is falsy.");
         setError("No se pudo enviar el mensaje. Falta el token de empleado. Por favor, recarga la página usando el enlace correcto.");
       }
       return;
     }
 
-    setError(null)
+    console.log("[ChatPage] handleSubmit: Guard condition passed. Proceeding with submission.");
+
+    setError(null);
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
       content: input,
       imageBase64,
       timestamp: new Date(),
-    }
+    };
 
-    setMessages((prev) => [...prev, userMessage])
-    const currentInput = input
-    const currentImageBase64 = imageBase64
-    setInput("")
-    setImageBase64(null)
-    setIsLoading(true)
+    setMessages((prev) => [...prev, userMessage]);
+    const currentInput = input;
+    const currentImageBase64 = imageBase64;
+    setInput("");
+    setImageBase64(null);
+    setIsLoading(true);
 
     const payload = {
       assistantId: assistant?.id,
@@ -163,27 +175,27 @@ function ChatPageContent() {
     console.log("[ChatPage] handleSubmit: Sending payload to /api/chat:", payload);
 
     try {
-      const endpoint = "/api/chat"
+      const endpoint = "/api/chat";
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-      })
+      });
 
-      const data = await response.json()
+      const data = await response.json();
 
       if (!response.ok) {
-        console.error("Server error:", data.error, data.details)
-        setMessages((prev) => prev.filter((msg) => msg.id !== userMessage.id))
-        throw new Error(data.error || "Error in server response")
+        console.error("Server error:", data.error, data.details);
+        setMessages((prev) => prev.filter((msg) => msg.id !== userMessage.id));
+        throw new Error(data.error || "Error in server response");
       }
 
       if (data.threadId && !threadId) {
-        setThreadId(data.threadId)
+        setThreadId(data.threadId);
         try {
-          localStorage.setItem(`threadId_${assistantId}_${employeeToken}`, data.threadId)
+          localStorage.setItem(`threadId_${assistantId}_${employeeToken}`, data.threadId);
         } catch (e) {
-          console.error("Error saving threadId to localStorage:", e)
+          console.error("Error saving threadId to localStorage:", e);
         }
       }
 
@@ -192,16 +204,16 @@ function ChatPageContent() {
         role: "assistant",
         content: data.reply,
         timestamp: new Date(),
-      }
-      setMessages((prev) => [...prev, assistantMessage])
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
     } catch (err) {
-      const error = err as Error
-      setError(error.message)
-      console.error("Error in conversation:", error)
+      const error = err as Error;
+      setError(error.message);
+      console.error("Error in conversation:", error);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const formatTime = (date: Date) => {
     try {
