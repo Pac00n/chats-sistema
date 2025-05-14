@@ -1,14 +1,14 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect, useRef, Suspense } from "react" // Added Suspense
-import { useParams, useRouter, useSearchParams } from "next/navigation" // Added useSearchParams
+import { useState, useEffect, useRef, Suspense } from "react"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { getAssistantById } from "@/lib/assistants"
-import { ArrowLeft, Send, Loader2, Paperclip, X, RefreshCw, AlertTriangle } from "lucide-react" // Added AlertTriangle
+import { ArrowLeft, Send, Loader2, Paperclip, X, RefreshCw, AlertTriangle } from "lucide-react"
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
 
@@ -27,7 +27,6 @@ const formatAssistantMessage = (content: string): string => {
   return content.replace(citationRegex, "").trim()
 }
 
-// Wrapper component to use Suspense with useSearchParams
 function ChatPageContent() {
   const params = useParams()
   const router = useRouter()
@@ -52,10 +51,8 @@ function ChatPageContent() {
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
 
-  // Load previous conversation
   useEffect(() => {
-    if (!employeeToken) return; // Don't load if no token
-
+    if (!employeeToken) return;
     try {
       const storedThreadId = localStorage.getItem(`threadId_${assistantId}_${employeeToken}`)
       if (storedThreadId) {
@@ -84,7 +81,7 @@ function ChatPageContent() {
       showWelcomeMessage()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assistantId, employeeToken]) 
+  }, [assistantId, employeeToken])
 
   const showWelcomeMessage = () => {
     if (assistant) {
@@ -99,7 +96,6 @@ function ChatPageContent() {
     }
   }
 
-  // Save messages to localStorage
   useEffect(() => {
     if (!employeeToken) return;
     if (messages.length > 0 && threadId) {
@@ -155,7 +151,7 @@ function ChatPageContent() {
           message: currentInput,
           imageBase64: currentImageBase64,
           threadId,
-          employeeToken, // Send employeeToken to backend
+          employeeToken,
         }),
       })
 
@@ -216,7 +212,6 @@ function ChatPageContent() {
     showWelcomeMessage()
   }
 
-  // Handle missing employeeToken
   if (!employeeToken) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-slate-100 text-slate-800 p-4">
@@ -236,7 +231,6 @@ function ChatPageContent() {
 
   if (!assistant) {
     return (
-      // Existing Assistant not found view (remains the same)
       <div className="flex items-center justify-center min-h-screen bg-slate-100">
         <Card className="w-full max-w-md bg-white border-slate-200 text-slate-800 relative z-10 shadow-md">
           <CardContent className="pt-6 text-center">
@@ -254,7 +248,6 @@ function ChatPageContent() {
     )
   }
 
-  // Existing Chat UI (remains largely the same, ensure employeeToken is used where needed)
   return (
     <div className="flex flex-col h-screen bg-slate-100 text-slate-800 relative">
       <div
@@ -329,7 +322,7 @@ function ChatPageContent() {
                 >
                   <div className={`flex max-w-[80%] ${message.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
                     {message.role === "user" ? (
-                      <div className="h-8 w-8 ml-3 bg-slate-600 text-white flex items-center justify-center rounded-full font-semibold flex-shrink-0 shadow-md">
+                      <div className="h-8 w-8 ml-3 bg-slate-700 text-white flex items-center justify-center rounded-full font-semibold flex-shrink-0 shadow-md">
                         U
                       </div>
                     ) : (
