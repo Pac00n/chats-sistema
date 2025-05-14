@@ -123,7 +123,17 @@ function ChatPageContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if ((!input.trim() && !imageBase64) || isLoading || !employeeToken) return
+
+    // Log the employeeToken value right before the check
+    console.log("[ChatPage] handleSubmit: employeeToken value:", employeeToken);
+
+    if ((!input.trim() && !imageBase64) || isLoading || !employeeToken) {
+      console.warn("[ChatPage] handleSubmit: Submission prevented. Input empty, loading, or no employeeToken.");
+      if (!employeeToken) {
+        setError("No se pudo enviar el mensaje. Falta el token de empleado. Por favor, recarga la página usando el enlace correcto.");
+      }
+      return;
+    }
 
     setError(null)
     const userMessage: Message = {
@@ -141,18 +151,22 @@ function ChatPageContent() {
     setImageBase64(null)
     setIsLoading(true)
 
+    // Log the payload being sent to the backend
+    const payload = {
+      assistantId: assistant?.id,
+      message: currentInput,
+      imageBase64: currentImageBase64,
+      threadId,
+      employeeToken,
+    };
+    console.log("[ChatPage] handleSubmit: Sending payload to /api/chat:", payload);
+
     try {
       const endpoint = "/api/chat"
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          assistantId: assistant?.id,
-          message: currentInput,
-          imageBase64: currentImageBase64,
-          threadId,
-          employeeToken,
-        }),
+        body: JSON.stringify(payload),
       })
 
       const data = await response.json()
