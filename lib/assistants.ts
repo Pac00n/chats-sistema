@@ -138,7 +138,7 @@ export const assistants: Assistant[] = [
 
   // CEO
   {
-    id: "eduardo-ceo",
+    id: "eduardo-ceo", // Asegurando que el id es exactamente este string
     assistant_id: process.env.EDUARDO_CEO_SISTEMA_SA_ASSISTANT_ID || "asst_r4TbLXhnmXKMqYNt8byDO91j",
     name: "Eduardo",
     role: "CEO",

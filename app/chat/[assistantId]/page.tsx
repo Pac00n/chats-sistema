@@ -69,7 +69,6 @@ function ChatPageContent() {
   // Load previous conversation
   useEffect(() => {
     if (!employeeToken) {
-        // showWelcomeMessage(); // Optionally show welcome even if no token, or rely on the redirect/error UI
         return; 
     }
     try {
@@ -100,12 +99,12 @@ function ChatPageContent() {
       showWelcomeMessage()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assistantId, employeeToken]) // assistant object is stable based on assistantId, so not strictly needed here if getAssistantById is pure
+  }, [assistantId, employeeToken]) 
 
   // Save messages to localStorage
   useEffect(() => {
     if (!employeeToken) return;
-    if (messages.length > 0 && threadId && messages[0].id !== 'welcome') { // Avoid saving only welcome message initially if no interaction
+    if (messages.length > 0 && threadId && messages[0].id !== 'welcome') { 
       try {
         localStorage.setItem(`messages_${assistantId}_${employeeToken}`, JSON.stringify(messages))
       } catch (e) {
@@ -194,7 +193,7 @@ function ChatPageContent() {
         throw new Error(data.error || "Error in server response");
       }
 
-      if (data.threadId && (!threadId || threadId !== data.threadId) ) { // Save/update threadId if new or different
+      if (data.threadId && (!threadId || threadId !== data.threadId) ) { 
         setThreadId(data.threadId);
         if(employeeToken){
           try {
@@ -206,7 +205,7 @@ function ChatPageContent() {
       }
 
       const assistantMessage: Message = {
-        id: Date.now().toString(), // Consider using a more unique ID if needed, e.g., from OpenAI response
+        id: Date.now().toString(), 
         role: "assistant",
         content: data.reply,
         timestamp: new Date(),
@@ -216,7 +215,6 @@ function ChatPageContent() {
       const error = err as Error;
       setError(error.message);
       console.error("Error in conversation:", error);
-      // Restore user message to input if sending failed, for better UX
       setMessages((prev) => prev.filter((msg) => msg.id !== userMessage.id)); 
       setInput(currentInput);
       setImageBase64(currentImageBase64);
@@ -361,7 +359,7 @@ function ChatPageContent() {
                 >
                   <div className={`flex max-w-[80%] ${message.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
                     {message.role === "user" ? (
-                      <div className="h-8 w-8 ml-3 bg-slate-700 text-white flex items-center justify-center rounded-full font-semibold flex-shrink-0 shadow-md">
+                      <div className="h-8 w-8 ml-3 bg-slate-800 text-slate-100 flex items-center justify-center rounded-full font-semibold flex-shrink-0 shadow-md">
                         U
                       </div>
                     ) : (

@@ -1,11 +1,11 @@
 "use client"
 import Link from "next/link"
 import Image from "next/image"
-import { useState } from "react" // Import useState
-import { assistantGroups, type Assistant } from "@/lib/assistants" // Import Assistant type
+import { useState } from "react"
+import { assistantGroups, type Assistant } from "@/lib/assistants"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button" // Import Button
-import { Copy } from "lucide-react" // Import Copy icon
+import { Button } from "@/components/ui/button"
+import { Copy } from "lucide-react"
 import { motion } from "framer-motion"
 
 export default function Home() {
@@ -20,16 +20,19 @@ export default function Home() {
   }
 
   const handleCopyLink = async (assistant: Assistant) => {
-    console.log("[HomePage] handleCopyLink triggered for assistant ID:", assistant.id, "Name:", assistant.name); // Log 1
+    console.log("[HomePage] handleCopyLink triggered for assistant ID:", assistant.id, "Name:", assistant.name);
     const employeeToken = generateUUID();
     const url = `${window.location.origin}/chat/${assistant.id}?employeeToken=${employeeToken}`;
-    console.log("[HomePage] Generated URL to copy:", url); // Log 2
+    console.log("[HomePage] Generated URL to copy:", url);
     try {
       await navigator.clipboard.writeText(url);
-      console.log("[HomePage] URL copied to clipboard. Setting copiedAssistantId to:", assistant.id); // Log 3
+      console.log("[HomePage] URL copied to clipboard. Setting copiedAssistantId to:", assistant.id);
+      console.log("[HomePage] Current copiedAssistantId BEFORE set:", copiedAssistantId); // Log adicional
       setCopiedAssistantId(assistant.id);
+      // Este log se ejecutará ANTES de que el estado realmente cambie debido a la naturaleza asíncrona de setState
+      // Para ver el estado DESPUÉS del cambio, necesitarías un useEffect o loguear en el render
       setTimeout(() => {
-        console.log("[HomePage] Resetting copiedAssistantId from:", assistant.id, "to null after timeout"); // Log 4 - modified
+        console.log("[HomePage] Resetting copiedAssistantId (was " + assistant.id + ") to null after timeout");
         setCopiedAssistantId(null);
       }, 2000);
     } catch (err) {
@@ -116,6 +119,8 @@ export default function Home() {
                       className="border-sistema-primary text-sistema-primary hover:bg-sistema-primary/10 hover:text-sistema-primary-dark transition-colors"
                     >
                       <Copy className="mr-2 h-4 w-4" />
+                      {/* Log para ver la comparación directamente en el JSX para depuración */}
+                      {/* {console.log("[HomePage] Button render - copiedAssistantId:", copiedAssistantId, "assistant.id:", assistant.id, "Comparison:", copiedAssistantId === assistant.id)} */}
                       {copiedAssistantId === assistant.id ? "¡Enlace Copiado!" : "Copiar Enlace Empleado"}
                     </Button>
                   </div>
