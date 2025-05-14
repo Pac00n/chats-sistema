@@ -306,8 +306,9 @@ function ChatPageContent() {
             <Image src="/images/logo.png" alt="SISTEMA INGENIERÍA" width={120} height={40} className="h-8 w-auto" />
           </Link>
           <div className="flex items-center gap-2">
+            {/* Avatar del Asistente en la Cabecera */} 
             <div
-              className={`h-8 w-8 ${assistant.bgColor} text-white flex items-center justify-center rounded-full font-semibold shadow-md`}
+              className={`h-8 w-8 ${assistant.bgColor} text-slate-800 flex items-center justify-center rounded-full font-semibold shadow-md`}
             >
               {assistant.name.charAt(0)}
             </div>
@@ -358,13 +359,15 @@ function ChatPageContent() {
                   }`}
                 >
                   <div className={`flex max-w-[80%] ${message.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                    {/* Avatar del Usuario en el Mensaje */}
                     {message.role === "user" ? (
                       <div className="h-8 w-8 ml-3 bg-slate-800 text-slate-100 flex items-center justify-center rounded-full font-semibold flex-shrink-0 shadow-md">
                         U
                       </div>
                     ) : (
+                      // Avatar del Asistente en el Mensaje
                       <div
-                        className={`h-8 w-8 mr-3 ${assistant.bgColor} text-white flex items-center justify-center rounded-full font-semibold flex-shrink-0 shadow-md`}
+                        className={`h-8 w-8 mr-3 ${assistant.bgColor} text-slate-800 flex items-center justify-center rounded-full font-semibold flex-shrink-0 shadow-md`}
                       >
                         {assistant?.name.charAt(0)}
                       </div>
@@ -420,8 +423,9 @@ function ChatPageContent() {
                 className="flex justify-start mt-4"
               >
                 <div className="flex items-center">
+                  {/* Avatar del Asistente en el Indicador de Carga */}
                   <div
-                    className={`h-8 w-8 mr-3 ${assistant.bgColor} text-white flex items-center justify-center rounded-full font-semibold flex-shrink-0 shadow-md`}
+                    className={`h-8 w-8 mr-3 ${assistant.bgColor} text-slate-800 flex items-center justify-center rounded-full font-semibold flex-shrink-0 shadow-md`}
                   >
                     {assistant?.name.charAt(0)}
                   </div>
