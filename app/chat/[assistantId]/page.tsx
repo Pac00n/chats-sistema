@@ -1,15 +1,14 @@
-"use client"
+'''use client'''
 
 import type React from "react"
-
-import { useState, useEffect, useRef } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useState, useEffect, useRef, Suspense } from "react" // Added Suspense
+import { useParams, useRouter, useSearchParams } from "next/navigation" // Added useSearchParams
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { getAssistantById } from "@/lib/assistants"
-import { ArrowLeft, Send, Loader2, Paperclip, X, RefreshCw } from "lucide-react"
+import { ArrowLeft, Send, Loader2, Paperclip, X, RefreshCw, AlertTriangle } from "lucide-react" // Added AlertTriangle
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
 
@@ -24,18 +23,19 @@ type Message = {
 
 // Helper function to format assistant messages
 const formatAssistantMessage = (content: string): string => {
-  // Regex to match any characters inside 【 and 】
   const citationRegex = /【.*?】/g
-  return content.replace(citationRegex, "").trim() // Remove pattern and trim whitespace
+  return content.replace(citationRegex, "").trim()
 }
 
-export default function ChatPage() {
+// Wrapper component to use Suspense with useSearchParams
+function ChatPageContent() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const assistantId = params.assistantId as string
   const assistant = getAssistantById(assistantId)
+  const employeeToken = searchParams.get("employeeToken")
 
-  // State hooks
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [imageBase64, setImageBase64] = useState<string | null>(null)
@@ -44,24 +44,23 @@ export default function ChatPage() {
   const [error, setError] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  // Background animation effect
   const [scrollY, setScrollY] = useState(0)
+
   useEffect(() => {
-    const handleScroll = () => {
-      setScrollY(window.scrollY)
-    }
+    const handleScroll = () => setScrollY(window.scrollY)
     window.addEventListener("scroll", handleScroll, { passive: true })
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
 
   // Load previous conversation
   useEffect(() => {
+    if (!employeeToken) return; // Don't load if no token
+
     try {
-      const storedThreadId = localStorage.getItem(`threadId_${assistantId}`)
+      const storedThreadId = localStorage.getItem(`threadId_${assistantId}_${employeeToken}`)
       if (storedThreadId) {
         setThreadId(storedThreadId)
-        const storedMessages = localStorage.getItem(`messages_${assistantId}`)
+        const storedMessages = localStorage.getItem(`messages_${assistantId}_${employeeToken}`)
         if (storedMessages) {
           try {
             const parsedMessages = JSON.parse(storedMessages)
@@ -85,9 +84,8 @@ export default function ChatPage() {
       showWelcomeMessage()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assistantId])
+  }, [assistantId, employeeToken]) 
 
-  // Show welcome message
   const showWelcomeMessage = () => {
     if (assistant) {
       setMessages([
@@ -103,47 +101,40 @@ export default function ChatPage() {
 
   // Save messages to localStorage
   useEffect(() => {
+    if (!employeeToken) return;
     if (messages.length > 0 && threadId) {
       try {
-        localStorage.setItem(`messages_${assistantId}`, JSON.stringify(messages))
+        localStorage.setItem(`messages_${assistantId}_${employeeToken}`, JSON.stringify(messages))
       } catch (e) {
         console.error("Error saving messages to localStorage:", e)
       }
     }
-  }, [messages, assistantId, threadId])
+  }, [messages, assistantId, threadId, employeeToken])
 
-  // Auto-scroll to bottom of messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  // Handle file change (image upload)
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
       const reader = new FileReader()
-      reader.onloadend = () => {
-        setImageBase64(reader.result as string)
-      }
+      reader.onloadend = () => setImageBase64(reader.result as string)
       reader.readAsDataURL(file)
     }
-    if (event.target) {
-      event.target.value = ""
-    }
+    if (event.target) event.target.value = ""
   }
 
-  // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if ((!input.trim() && !imageBase64) || isLoading) return
+    if ((!input.trim() && !imageBase64) || isLoading || !employeeToken) return
 
     setError(null)
-
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
       content: input,
-      imageBase64: imageBase64,
+      imageBase64,
       timestamp: new Date(),
     }
 
@@ -164,6 +155,7 @@ export default function ChatPage() {
           message: currentInput,
           imageBase64: currentImageBase64,
           threadId,
+          employeeToken, // Send employeeToken to backend
         }),
       })
 
@@ -178,7 +170,7 @@ export default function ChatPage() {
       if (data.threadId && !threadId) {
         setThreadId(data.threadId)
         try {
-          localStorage.setItem(`threadId_${assistantId}`, data.threadId)
+          localStorage.setItem(`threadId_${assistantId}_${employeeToken}`, data.threadId)
         } catch (e) {
           console.error("Error saving threadId to localStorage:", e)
         }
@@ -190,7 +182,6 @@ export default function ChatPage() {
         content: data.reply,
         timestamp: new Date(),
       }
-
       setMessages((prev) => [...prev, assistantMessage])
     } catch (err) {
       const error = err as Error
@@ -201,7 +192,6 @@ export default function ChatPage() {
     }
   }
 
-  // Format time
   const formatTime = (date: Date) => {
     try {
       return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
@@ -211,11 +201,11 @@ export default function ChatPage() {
     }
   }
 
-  // Start new conversation
   const startNewConversation = () => {
+    if (!employeeToken) return;
     try {
-      localStorage.removeItem(`threadId_${assistantId}`)
-      localStorage.removeItem(`messages_${assistantId}`)
+      localStorage.removeItem(`threadId_${assistantId}_${employeeToken}`)
+      localStorage.removeItem(`messages_${assistantId}_${employeeToken}`)
     } catch (e) {
       console.error("Error removing data from localStorage:", e)
     }
@@ -226,9 +216,27 @@ export default function ChatPage() {
     showWelcomeMessage()
   }
 
-  // Assistant not found view
+  // Handle missing employeeToken
+  if (!employeeToken) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-100 text-slate-800 p-4">
+        <Card className="w-full max-w-md bg-white border-red-500 text-slate-800 shadow-lg">
+          <CardContent className="pt-6 text-center">
+            <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold mb-2 text-red-600">Acceso No Autorizado</h2>
+            <p className="text-slate-600 mb-6">Se requiere un token de empleado válido para acceder a esta página. Por favor, utiliza el enlace proporcionado.</p>
+            <Button asChild className="bg-sistema-primary hover:bg-sistema-primary-dark text-white">
+              <Link href="/">Volver a la página principal</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (!assistant) {
     return (
+      // Existing Assistant not found view (remains the same)
       <div className="flex items-center justify-center min-h-screen bg-slate-100">
         <Card className="w-full max-w-md bg-white border-slate-200 text-slate-800 relative z-10 shadow-md">
           <CardContent className="pt-6 text-center">
@@ -246,9 +254,9 @@ export default function ChatPage() {
     )
   }
 
+  // Existing Chat UI (remains largely the same, ensure employeeToken is used where needed)
   return (
     <div className="flex flex-col h-screen bg-slate-100 text-slate-800 relative">
-      {/* Animated background */}
       <div
         className="fixed inset-0 flex justify-center items-center z-0 pointer-events-none"
         style={{ filter: "blur(80px)", opacity: 0.1 }}
@@ -261,8 +269,6 @@ export default function ChatPage() {
           }}
         />
       </div>
-
-      {/* Header */}
       <header className="bg-white border-b border-slate-200 py-2 px-4 shadow-sm sticky top-0 z-20">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
@@ -282,10 +288,7 @@ export default function ChatPage() {
           </div>
         </div>
       </header>
-
-      {/* Main content */}
       <div className="relative z-10 flex flex-col flex-1 overflow-hidden">
-        {/* Error Banner */}
         <AnimatePresence>
           {error && (
             <motion.div
@@ -311,8 +314,6 @@ export default function ChatPage() {
             </motion.div>
           )}
         </AnimatePresence>
-
-        {/* Chat Messages */}
         <div className={`flex-1 overflow-y-auto p-4 sm:p-6 ${error ? "pt-20" : "pt-6"} pb-40`}>
           <div className="max-w-3xl mx-auto space-y-4">
             <AnimatePresence initial={false}>
@@ -327,7 +328,6 @@ export default function ChatPage() {
                   }`}
                 >
                   <div className={`flex max-w-[80%] ${message.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
-                    {/* Avatar */}
                     {message.role === "user" ? (
                       <div className="h-8 w-8 ml-3 bg-slate-600 text-white flex items-center justify-center rounded-full font-semibold flex-shrink-0 shadow-md">
                         U
@@ -339,8 +339,6 @@ export default function ChatPage() {
                         {assistant?.name.charAt(0)}
                       </div>
                     )}
-
-                    {/* Message bubble */}
                     <div
                       className={`rounded-lg shadow-md transition-all relative ${
                         message.role === "user"
@@ -348,7 +346,6 @@ export default function ChatPage() {
                           : "bg-white text-slate-800 border border-slate-200"
                       }`}
                     >
-                      {/* Image attachment */}
                       {message.role === "user" && message.imageBase64 && (
                         <div className="p-2 border-b border-sistema-primary-dark/30">
                           <Image
@@ -360,8 +357,6 @@ export default function ChatPage() {
                           />
                         </div>
                       )}
-
-                      {/* Message content */}
                       {message.content && (
                         <div className="p-3">
                           <div className="whitespace-pre-wrap">
@@ -369,8 +364,6 @@ export default function ChatPage() {
                           </div>
                         </div>
                       )}
-
-                      {/* Timestamp */}
                       <div
                         className={`text-xs px-3 pb-2 ${
                           message.role === "user" ? "text-white/70" : "text-slate-500"
@@ -378,8 +371,6 @@ export default function ChatPage() {
                       >
                         {formatTime(message.timestamp)}
                       </div>
-
-                      {/* Welcome message effect */}
                       {message.id === "welcome" && message.role === "assistant" && (
                         <div
                           className={`absolute -top-1 -right-1 h-2 w-2 rounded-full bg-sistema-primary animate-ping ${
@@ -392,8 +383,6 @@ export default function ChatPage() {
                 </motion.div>
               ))}
             </AnimatePresence>
-
-            {/* Loading indicator */}
             {isLoading && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
@@ -416,11 +405,8 @@ export default function ChatPage() {
             <div ref={messagesEndRef} />
           </div>
         </div>
-
-        {/* Input Area */}
         <div className="bg-white border-t border-slate-200 p-4 sm:p-6 sticky bottom-0 z-40 transition-all duration-200 ease-in-out shadow-lg">
           <div className="max-w-3xl mx-auto">
-            {/* New conversation button */}
             <div className="flex justify-end mb-4">
               <Button
                 onClick={startNewConversation}
@@ -432,8 +418,6 @@ export default function ChatPage() {
                 Nueva conversación
               </Button>
             </div>
-
-            {/* Image preview */}
             <AnimatePresence>
               {imageBase64 && (
                 <motion.div
@@ -459,8 +443,6 @@ export default function ChatPage() {
                 </motion.div>
               )}
             </AnimatePresence>
-
-            {/* Message form */}
             <form onSubmit={handleSubmit} className="flex items-center gap-2">
               <Button
                 type="button"
@@ -495,8 +477,6 @@ export default function ChatPage() {
                 {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </Button>
             </form>
-
-            {/* Status text */}
             <div className="mt-2 text-xs text-slate-500 text-center">
               {isLoading ? "Procesando..." : "Tus conversaciones se guardan para mejorar la experiencia."}
             </div>
@@ -505,4 +485,13 @@ export default function ChatPage() {
       </div>
     </div>
   )
+}
+
+// Export a new default component that wraps ChatPageContent with Suspense
+export default function ChatPage() {
+  return (
+    <Suspense fallback={<div>Cargando...</div>}> {/* Or a more sophisticated loader */}
+      <ChatPageContent />
+    </Suspense>
+  );
 }
