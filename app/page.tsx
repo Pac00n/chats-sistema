@@ -20,17 +20,23 @@ export default function Home() {
   }
 
   const handleCopyLink = async (assistant: Assistant) => {
-    const employeeToken = generateUUID()
-    const url = `${window.location.origin}/chat/${assistant.id}?employeeToken=${employeeToken}`
+    console.log("[HomePage] handleCopyLink triggered for assistant ID:", assistant.id, "Name:", assistant.name); // Log 1
+    const employeeToken = generateUUID();
+    const url = `${window.location.origin}/chat/${assistant.id}?employeeToken=${employeeToken}`;
+    console.log("[HomePage] Generated URL to copy:", url); // Log 2
     try {
-      await navigator.clipboard.writeText(url)
-      setCopiedAssistantId(assistant.id)
-      setTimeout(() => setCopiedAssistantId(null), 2000) // Reset after 2 seconds
+      await navigator.clipboard.writeText(url);
+      console.log("[HomePage] URL copied to clipboard. Setting copiedAssistantId to:", assistant.id); // Log 3
+      setCopiedAssistantId(assistant.id);
+      setTimeout(() => {
+        console.log("[HomePage] Resetting copiedAssistantId from:", assistant.id, "to null after timeout"); // Log 4 - modified
+        setCopiedAssistantId(null);
+      }, 2000);
     } catch (err) {
-      console.error("Failed to copy: ", err)
-      alert("Error al copiar el enlace. Inténtalo manually.") // Corrected manually typo
+      console.error("Failed to copy: ", err);
+      alert("Error al copiar el enlace. Inténtalo manualmente.");
     }
-  }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-200 text-slate-800">
@@ -75,12 +81,11 @@ export default function Home() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5, delay: index * 0.1 + groupIndex * 0.2 }}
-                  className="flex flex-col" // Added for button positioning
+                  className="flex flex-col"
                 >
                   <Link href={`/chat/${assistant.id}`} className="block h-full flex-grow">
                     <Card className="h-full bg-white border-slate-200 hover:border-sistema-primary transition-all duration-300 hover:shadow-lg hover:shadow-sistema-primary/10 cursor-pointer overflow-hidden group">
                       <div className="absolute inset-0 bg-gradient-to-br from-sistema-primary/5 to-sistema-secondary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                      {/* CardHeader is kept, but its visual issues need to be addressed separately if it's meant to be the primary display for name/role */}
                       <CardHeader className={`${assistant.bgColor} text-white min-h-[80px]`}>
                         <div className="flex items-center justify-between">
                           <div>
@@ -91,7 +96,7 @@ export default function Home() {
                         </div>
                       </CardHeader>
                       <CardContent className="pt-4 relative z-10 flex flex-col flex-grow">
-                        <div className="mb-3"> {/* Container for name and role */}
+                        <div className="mb-3">
                           <h3 className="text-lg font-semibold text-slate-800">{assistant.name}</h3>
                           <p className="text-sm text-slate-500">{assistant.role}</p>
                         </div>
@@ -102,7 +107,7 @@ export default function Home() {
                   <div className="mt-2 text-center">
                     <Button
                       onClick={(e) => {
-                        e.preventDefault() // Prevent navigation if Link is also clicked
+                        e.preventDefault()
                         e.stopPropagation()
                         handleCopyLink(assistant)
                       }}
