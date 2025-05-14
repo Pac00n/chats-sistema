@@ -29,7 +29,7 @@ const formatAssistantMessage = (content: string): string => {
 
 function ChatPageContent() {
   const params = useParams()
-  // const router = useRouter() // Not used currently, can be removed if not needed
+  // const router = useRouter() 
   const searchParams = useSearchParams()
   const assistantId = params.assistantId as string
   const assistant = getAssistantById(assistantId)
@@ -66,7 +66,6 @@ function ChatPageContent() {
     }
   }
   
-  // Load previous conversation
   useEffect(() => {
     if (!employeeToken) {
         return; 
@@ -101,7 +100,6 @@ function ChatPageContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assistantId, employeeToken]) 
 
-  // Save messages to localStorage
   useEffect(() => {
     if (!employeeToken) return;
     if (messages.length > 0 && threadId && messages[0].id !== 'welcome') { 
@@ -129,7 +127,6 @@ function ChatPageContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     console.log("[ChatPage] handleSubmit: employeeToken value at start of function:", employeeToken);
     console.log("[ChatPage] handleSubmit: input value:", input);
     console.log("[ChatPage] handleSubmit: imageBase64 present:", !!imageBase64);
@@ -149,9 +146,7 @@ function ChatPageContent() {
       }
       return;
     }
-
     console.log("[ChatPage] handleSubmit: Guard condition passed. Proceeding with submission.");
-
     setError(null);
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -160,14 +155,12 @@ function ChatPageContent() {
       imageBase64,
       timestamp: new Date(),
     };
-
     setMessages((prev) => [...prev, userMessage]);
     const currentInput = input;
     const currentImageBase64 = imageBase64;
     setInput("");
     setImageBase64(null);
     setIsLoading(true);
-
     const payload = {
       assistantId: assistant?.id,
       message: currentInput,
@@ -176,7 +169,6 @@ function ChatPageContent() {
       employeeToken,
     };
     console.log("[ChatPage] handleSubmit: Sending payload to /api/chat:", payload);
-
     try {
       const endpoint = "/api/chat";
       const response = await fetch(endpoint, {
@@ -184,15 +176,12 @@ function ChatPageContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-
       const data = await response.json();
-
       if (!response.ok) {
         console.error("Server error:", data.error, data.details);
         setMessages((prev) => prev.filter((msg) => msg.id !== userMessage.id));
         throw new Error(data.error || "Error in server response");
       }
-
       if (data.threadId && (!threadId || threadId !== data.threadId) ) { 
         setThreadId(data.threadId);
         if(employeeToken){
@@ -203,7 +192,6 @@ function ChatPageContent() {
           }
         }
       }
-
       const assistantMessage: Message = {
         id: Date.now().toString(), 
         role: "assistant",
@@ -218,7 +206,6 @@ function ChatPageContent() {
       setMessages((prev) => prev.filter((msg) => msg.id !== userMessage.id)); 
       setInput(currentInput);
       setImageBase64(currentImageBase64);
-
     } finally {
       setIsLoading(false);
     }
@@ -284,7 +271,6 @@ function ChatPageContent() {
     )
   }
 
-  // Main Chat UI
   return (
     <div className="flex flex-col h-screen bg-slate-100 text-slate-800 relative">
       <div
@@ -301,24 +287,37 @@ function ChatPageContent() {
       </div>
       <header className="bg-white border-b border-slate-200 py-2 px-4 shadow-sm sticky top-0 z-20">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <ArrowLeft className="h-4 w-4 text-slate-600" />
-            <Image src="/images/logo.png" alt="SISTEMA INGENIERÍA" width={120} height={40} className="h-8 w-auto" />
-          </Link>
-          <div className="flex items-center gap-2">
-            {/* Avatar del Asistente en la Cabecera */} 
-            <div
-              className={`h-8 w-8 ${assistant.bgColor} text-slate-800 flex items-center justify-center rounded-full font-semibold shadow-md`}
-            >
-              {assistant.name.charAt(0)}
+          {/* Conditionally render the back link based on employeeToken presence */} 
+          {!employeeToken ? (
+            <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+              <ArrowLeft className="h-4 w-4 text-slate-600" />
+              <Image src="/images/logo.png" alt="SISTEMA INGENIERÍA" width={120} height={40} className="h-8 w-auto" />
+            </Link>
+          ) : (
+            // If employeeToken exists, just show the logo, not as a link to home
+            <div className="flex items-center gap-2">
+              {/* You could optionally still show an ArrowLeft but make it non-functional or for a different action */}
+              <Image src="/images/logo.png" alt="SISTEMA INGENIERÍA" width={120} height={40} className="h-8 w-auto" />
             </div>
-            <div>
-              <h2 className="font-medium text-slate-800">{assistant.name}</h2>
-              <p className="text-xs text-slate-500">{assistant.role}</p>
+          )}
+          {/* Assistant Info in Header (remains the same) */} 
+          {assistant && (
+            <div className="flex items-center gap-2">
+              <div
+                className={`h-8 w-8 ${assistant.bgColor} text-slate-800 flex items-center justify-center rounded-full font-semibold shadow-md`}
+              >
+                {assistant.name.charAt(0)}
+              </div>
+              <div>
+                <h2 className="font-medium text-slate-800">{assistant.name}</h2>
+                <p className="text-xs text-slate-500">{assistant.role}</p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </header>
+      {/* Rest of the chat UI (messages, input area, etc.) */}
+      {/* ... (existing code for chat messages, input area, etc. - no changes needed here for this specific request) ... */}
       <div className="relative z-10 flex flex-col flex-1 overflow-hidden">
         <AnimatePresence>
           {error && (
@@ -359,13 +358,11 @@ function ChatPageContent() {
                   }`}
                 >
                   <div className={`flex max-w-[80%] ${message.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
-                    {/* Avatar del Usuario en el Mensaje */}
                     {message.role === "user" ? (
                       <div className="h-8 w-8 ml-3 bg-slate-800 text-slate-100 flex items-center justify-center rounded-full font-semibold flex-shrink-0 shadow-md">
                         U
                       </div>
                     ) : (
-                      // Avatar del Asistente en el Mensaje
                       <div
                         className={`h-8 w-8 mr-3 ${assistant.bgColor} text-slate-800 flex items-center justify-center rounded-full font-semibold flex-shrink-0 shadow-md`}
                       >
@@ -423,7 +420,6 @@ function ChatPageContent() {
                 className="flex justify-start mt-4"
               >
                 <div className="flex items-center">
-                  {/* Avatar del Asistente en el Indicador de Carga */}
                   <div
                     className={`h-8 w-8 mr-3 ${assistant.bgColor} text-slate-800 flex items-center justify-center rounded-full font-semibold flex-shrink-0 shadow-md`}
                   >
@@ -521,7 +517,6 @@ function ChatPageContent() {
   )
 }
 
-// Export a new default component that wraps ChatPageContent with Suspense
 export default function ChatPage() {
   console.log("[ChatPage] Component ChatPage (wrapper with Suspense) is rendering.");
   return (
