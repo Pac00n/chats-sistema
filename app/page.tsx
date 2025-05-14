@@ -79,18 +79,17 @@ ${fullUrl}`);
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {group.assistants.map((assistant, index) => {
-                // LOG PARA VER EL HREF DE CADA LINK
-                console.log(`[HomePage] Rendering Link for: ${assistant.name} (ID: ${assistant.id}), Href: /chat/${assistant.id}`);
+                console.log(`[HomePage] Rendering Card for: ${assistant.name} (ID: ${assistant.id}), Href for Link: /chat/${assistant.id}`);
                 return (
                   <motion.div
-                    key={assistant.id} // Key importante
+                    key={assistant.id}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.5, delay: index * 0.1 + groupIndex * 0.2 }}
-                    className="flex flex-col"
+                    className="flex flex-col bg-white border border-slate-200 rounded-lg shadow-md overflow-hidden group hover:border-sistema-primary transition-all duration-300 hover:shadow-lg hover:shadow-sistema-primary/10"
                   >
-                    <Link href={`/chat/${assistant.id}`} className="block h-full flex-grow">
-                      <Card className="h-full bg-white border-slate-200 hover:border-sistema-primary transition-all duration-300 hover:shadow-lg hover:shadow-sistema-primary/10 cursor-pointer overflow-hidden group">
+                    <Link href={`/chat/${assistant.id}`} className="block flex-grow cursor-pointer">
+                      <div className="relative"> {/* Optional: for hover effects if needed */}
                         <div className="absolute inset-0 bg-gradient-to-br from-sistema-primary/5 to-sistema-secondary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
                         <CardHeader className={`${assistant.bgColor} text-white min-h-[80px]`}>
                           <div className="flex items-center justify-between">
@@ -101,20 +100,21 @@ ${fullUrl}`);
                             <assistant.iconType className="h-6 w-6 flex-shrink-0" />
                           </div>
                         </CardHeader>
-                        <CardContent className="pt-4 relative z-10 flex flex-col flex-grow">
+                        <CardContent className="pt-4 relative z-10">
                           <div className="mb-3">
                             <h3 className="text-lg font-semibold text-slate-800">{assistant.name}</h3>
                             <p className="text-sm text-slate-500">{assistant.role}</p>
                           </div>
-                          <p className="text-sm text-slate-600 flex-grow">{assistant.description}</p>
+                          <p className="text-sm text-slate-600">{assistant.description}</p>
                         </CardContent>
-                      </Card>
+                      </div>
                     </Link>
-                    <div className="mt-2 text-center">
+                    
+                    <div className="p-4 border-t border-slate-200 text-center">
                       <Button
                         onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
+                          // No e.preventDefault() or e.stopPropagation() should be needed here
+                          // as the button is no longer a child of the Link in terms of event propagation for navigation.
                           console.log(`[HomePage] Botón Copiar CLICADO para: ${assistant.name} (ID: ${assistant.id})`);
                           if (assistant.id === "eduardo-ceo") {
                             console.log("[HomePage] ES EL BOTÓN DEL CEO!");
