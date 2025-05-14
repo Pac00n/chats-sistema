@@ -1,23 +1,48 @@
 "use client"
 import Link from "next/link"
 import Image from "next/image"
-import { useState } from "react"
+import { useState, useEffect, Suspense } from "react" 
+import { useSearchParams, useRouter } from 'next/navigation'
 import { assistantGroups, type Assistant } from "@/lib/assistants"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Copy } from "lucide-react"
+import { Copy, AlertTriangle } from "lucide-react" 
 import { motion } from "framer-motion"
 
-export default function Home() {
-  const [copiedAssistantId, setCopiedAssistantId] = useState<string | null>(null)
+// Leer el token de administrador desde las variables de entorno
+const ADMIN_TOKEN_FROM_ENV = process.env.NEXT_PUBLIC_ADMIN_SECRET_TOKEN;
+
+function HomePageContent() {
+  const searchParams = useSearchParams();
+  // const router = useRouter(); // No se usa para redirección por ahora, solo muestra mensaje
+  const adminTokenFromUrl = searchParams.get("adminToken");
+
+  // Log para depuración
+  // console.log("[HomePageContent] adminTokenFromUrl:", adminTokenFromUrl);
+  // console.log("[HomePageContent] ADMIN_TOKEN_FROM_ENV:", ADMIN_TOKEN_FROM_ENV);
+
+  if (adminTokenFromUrl !== ADMIN_TOKEN_FROM_ENV) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen text-center p-4 bg-slate-100">
+        <AlertTriangle className="h-16 w-16 text-red-500 mx-auto mb-6" />
+        <h1 className="text-3xl font-bold text-red-600 mb-3">Acceso Restringido</h1>
+        <p className="text-slate-700 text-lg max-w-md">
+          No tienes permiso para acceder a esta página. Si eres administrador, asegúrate de que la URL incluya el token de acceso correcto (<code>?adminToken=TU_TOKEN</code>).
+        </p>
+      </div>
+    );
+  }
+
+  // Si el token es correcto, renderiza el contenido normal de la página de inicio
+  const [copiedAssistantId, setCopiedAssistantId] = useState<string | null>(null);
 
   const generateUUID = () => {
     return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
       const r = (Math.random() * 16) | 0,
-        v = c === "x" ? r : (r & 0x3) | 0x8
-      return v.toString(16)
-    })
-  }
+        v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  };
 
   const handleCopyLink = async (assistant: Assistant) => {
     console.log("[HomePage] handleCopyLink triggered for assistant ID:", assistant.id, "Name:", assistant.name);
@@ -27,7 +52,8 @@ export default function Home() {
     console.log("[HomePage] Generated URL to copy:", fullUrl);
     try {
       await navigator.clipboard.writeText(fullUrl);
-      alert(`Enlace copiado al portapapeles (para ${assistant.name}): ${fullUrl}`); 
+      alert(`Enlace copiado al portapapeles (para ${assistant.name}):
+${fullUrl}`); 
       console.log("[HomePage] URL copied. Current copiedAssistantId BEFORE set:", copiedAssistantId, "Attempting to set to:", assistant.id);
       setCopiedAssistantId(assistant.id);
       setTimeout(() => {
@@ -60,7 +86,7 @@ ${fullUrl}`);
               priority
             />
           </div>
-          <h1 className="text-3xl font-bold mb-4 text-sistema-dark">Asistentes Virtuales</h1>
+          <h1 className="text-3xl font-bold mb-4 text-sistema-dark">Asistentes Virtuales (Admin)</h1>
           <p className="text-lg text-slate-600 max-w-2xl mx-auto">
             Selecciona un asistente para iniciar una conversación o copia un enlace único para un empleado.
           </p>
@@ -89,7 +115,7 @@ ${fullUrl}`);
                     className="flex flex-col bg-white border border-slate-200 rounded-lg shadow-md overflow-hidden group hover:border-sistema-primary transition-all duration-300 hover:shadow-lg hover:shadow-sistema-primary/10"
                   >
                     <Link href={`/chat/${assistant.id}`} className="block flex-grow cursor-pointer">
-                      <div className="relative"> {/* Optional: for hover effects if needed */}
+                      <div className="relative">
                         <div className="absolute inset-0 bg-gradient-to-br from-sistema-primary/5 to-sistema-secondary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
                         <CardHeader className={`${assistant.bgColor} text-white min-h-[80px]`}>
                           <div className="flex items-center justify-between">
@@ -113,8 +139,6 @@ ${fullUrl}`);
                     <div className="p-4 border-t border-slate-200 text-center">
                       <Button
                         onClick={(e) => {
-                          // No e.preventDefault() or e.stopPropagation() should be needed here
-                          // as the button is no longer a child of the Link in terms of event propagation for navigation.
                           console.log(`[HomePage] Botón Copiar CLICADO para: ${assistant.name} (ID: ${assistant.id})`);
                           if (assistant.id === "eduardo-ceo") {
                             console.log("[HomePage] ES EL BOTÓN DEL CEO!");
@@ -137,5 +161,13 @@ ${fullUrl}`);
         ))}
       </div>
     </div>
-  )
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen text-xl font-semibold">Cargando página de inicio...</div>}> 
+      <HomePageContent />
+    </Suspense>
+  );
 }
