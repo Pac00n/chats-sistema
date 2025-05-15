@@ -4,7 +4,8 @@
       "src": "package.json",
       "use": "@vercel/next",
       "config": {
-        "installCommand": "pnpm install --no-frozen-lockfile"
+        "installCommand": "pnpm install --no-frozen-lockfile",
+        "buildCommand": "./override.build.sh"
       }
     }
   ]
