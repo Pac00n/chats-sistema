@@ -2,6 +2,12 @@
 
 *Automatically synced with your [v0.dev](https://v0.dev) deployments*
 
+## Recent Updates
+
+- Added support for Markdown rendering in chat responses
+- Fixed dependency conflicts in pnpm-lock.yaml
+- Improved UI for assistant analysis tool
+
 [![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/pac0ns-projects/v0-openai-chat-app)
 [![Built with v0](https://img.shields.io/badge/Built%20with-v0.dev-black?style=for-the-badge)](https://v0.dev/chat/projects/cpAj1zJrUaq)
 
