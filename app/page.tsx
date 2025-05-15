@@ -2,24 +2,27 @@
 import Link from "next/link"
 import Image from "next/image"
 import { useState, useEffect, Suspense } from "react" 
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { assistantGroups, type Assistant } from "@/lib/assistants"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Copy, AlertTriangle } from "lucide-react" 
+import { Textarea } from "@/components/ui/textarea"
+import { Copy, AlertTriangle, Loader2 } from "lucide-react" 
 import { motion } from "framer-motion"
+import ReactMarkdown from 'react-markdown'; // Added for Markdown rendering
 
 // Leer el token de administrador desde las variables de entorno
 const ADMIN_TOKEN_FROM_ENV = process.env.NEXT_PUBLIC_ADMIN_SECRET_TOKEN;
 
 function HomePageContent() {
   const searchParams = useSearchParams();
-  // const router = useRouter(); // No se usa para redirección por ahora, solo muestra mensaje
   const adminTokenFromUrl = searchParams.get("adminToken");
 
-  // Log para depuración
-  // console.log("[HomePageContent] adminTokenFromUrl:", adminTokenFromUrl);
-  // console.log("[HomePageContent] ADMIN_TOKEN_FROM_ENV:", ADMIN_TOKEN_FROM_ENV);
+  const [copiedAssistantId, setCopiedAssistantId] = useState<string | null>(null);
+  const [analysisQuery, setAnalysisQuery] = useState<string>("");
+  const [analysisResult, setAnalysisResult] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
 
   if (adminTokenFromUrl !== ADMIN_TOKEN_FROM_ENV) {
     return (
@@ -32,9 +35,6 @@ function HomePageContent() {
       </div>
     );
   }
-
-  // Si el token es correcto, renderiza el contenido normal de la página de inicio
-  const [copiedAssistantId, setCopiedAssistantId] = useState<string | null>(null);
 
   const generateUUID = () => {
     return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
@@ -54,10 +54,8 @@ function HomePageContent() {
       await navigator.clipboard.writeText(fullUrl);
       alert(`Enlace copiado al portapapeles (para ${assistant.name}):
 ${fullUrl}`); 
-      console.log("[HomePage] URL copied. Current copiedAssistantId BEFORE set:", copiedAssistantId, "Attempting to set to:", assistant.id);
       setCopiedAssistantId(assistant.id);
       setTimeout(() => {
-        console.log(`[HomePage] Resetting copiedAssistantId (which was ${assistant.id} when timeout was set) to null after timeout.`);
         setCopiedAssistantId(null);
       }, 2000);
     } catch (err) {
@@ -67,45 +65,62 @@ ${fullUrl}`);
     }
   };
 
+  const handleAnalysisSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!analysisQuery.trim()) {
+      setAnalysisError("La consulta de análisis no puede estar vacía.");
+      return;
+    }
+    setIsAnalyzing(true);
+    setAnalysisResult(null);
+    setAnalysisError(null);
+    console.log("[HomePage] Submitting analysis query:", analysisQuery);
+
+    try {
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: analysisQuery }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error("[HomePage] Analysis API error:", data);
+        throw new Error(data.error || "Error en la respuesta del servidor de análisis.");
+      }
+      console.log("[HomePage] Analysis API success:", data);
+      setAnalysisResult(data.analysis || "No se obtuvo un resultado de análisis claro.");
+    } catch (err: any) {
+      console.error("[HomePage] Failed to submit analysis query:", err);
+      setAnalysisError(err.message || "Ocurrió un error al procesar el análisis.");
+      setAnalysisResult(null);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-200 text-slate-800">
       <div className="container mx-auto px-4 py-8">
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="text-center mb-8"
-        >
-          <div className="flex justify-center mb-4">
-            <Image
-              src="/images/logo.png"
-              alt="SISTEMA INGENIERÍA"
-              width={240}
-              height={80}
-              className="h-auto"
-              priority
-            />
-          </div>
-          <h1 className="text-3xl font-bold mb-4 text-sistema-dark">Asistentes Virtuales (Admin)</h1>
-          <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-            Selecciona un asistente para iniciar una conversación o copia un enlace único para un empleado.
-          </p>
+        <motion.div className="text-center mb-8">
+             <div className="flex justify-center mb-4">
+               <Image src="/images/logo.png" alt="SISTEMA INGENIERÍA" width={240} height={80} className="h-auto" priority />
+             </div>
+             <h1 className="text-3xl font-bold mb-4 text-sistema-dark">Asistentes Virtuales (Admin)</h1>
+             <p className="text-lg text-slate-600 max-w-2xl mx-auto">
+               Selecciona un asistente para iniciar una conversación o copia un enlace único para un empleado.
+             </p>
         </motion.div>
 
         {assistantGroups.map((group, groupIndex) => (
           <div key={group.title} className="mb-10">
-            <motion.h2
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.5, delay: groupIndex * 0.1 }}
-              className="text-xl font-semibold mb-4 text-sistema-dark border-b border-sistema-primary pb-2"
-            >
+            <motion.h2 className="text-xl font-semibold mb-4 text-sistema-dark border-b border-sistema-primary pb-2">
               {group.title}
             </motion.h2>
-
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {group.assistants.map((assistant, index) => {
-                console.log(`[HomePage] Rendering Card for: ${assistant.name} (ID: ${assistant.id}), Href for Link: /chat/${assistant.id}`);
                 return (
                   <motion.div
                     key={assistant.id}
@@ -135,14 +150,9 @@ ${fullUrl}`);
                         </CardContent>
                       </div>
                     </Link>
-                    
                     <div className="p-4 border-t border-slate-200 text-center">
                       <Button
                         onClick={(e) => {
-                          console.log(`[HomePage] Botón Copiar CLICADO para: ${assistant.name} (ID: ${assistant.id})`);
-                          if (assistant.id === "eduardo-ceo") {
-                            console.log("[HomePage] ES EL BOTÓN DEL CEO!");
-                          }
                           handleCopyLink(assistant);
                         }}
                         variant="outline"
@@ -159,6 +169,48 @@ ${fullUrl}`);
             </div>
           </div>
         ))}
+
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: assistantGroups.length * 0.1 + 0.2 }}
+          className="mt-12 p-6 bg-white rounded-lg shadow-md border border-slate-200"
+        >
+          <h2 className="text-2xl font-semibold mb-4 text-sistema-dark border-b border-sistema-primary pb-2">Análisis de Conversaciones</h2>
+          <form onSubmit={handleAnalysisSubmit}>
+            <div className="mb-4">
+              <label htmlFor="analysisQuery" className="block text-sm font-medium text-slate-700 mb-1">Tu pregunta para el análisis:</label>
+              <Textarea
+                id="analysisQuery"
+                value={analysisQuery}
+                onChange={(e) => setAnalysisQuery(e.target.value)}
+                placeholder="Ej: ¿Cuáles fueron los temas más comunes para el asistente 'paco-delineante-bim'? Limita la búsqueda a 50 mensajes."
+                className="w-full p-2 border border-slate-300 rounded-md focus:ring-sistema-primary focus:border-sistema-primary min-h-[100px]"
+                rows={4}
+              />
+            </div>
+            <Button type="submit" disabled={isAnalyzing} className="bg-sistema-secondary hover:bg-sistema-secondary-dark text-white">
+              {isAnalyzing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {isAnalyzing ? "Analizando..." : "Realizar Análisis"}
+            </Button>
+          </form>
+
+          {analysisError && (
+            <div className="mt-4 p-3 bg-red-100 border border-red-300 text-red-700 rounded-md">
+              <p className="font-semibold">Error en el Análisis:</p>
+              <p>{analysisError}</p>
+            </div>
+          )}
+
+          {analysisResult && (
+            <div className="mt-6">
+              <h3 className="text-xl font-semibold mb-2 text-slate-700">Resultado del Análisis:</h3>
+              <div className="prose prose-sm sm:prose lg:prose-lg xl:prose-xl max-w-none p-4 bg-slate-50 border border-slate-200 rounded-md overflow-x-auto">
+                <ReactMarkdown>{analysisResult}</ReactMarkdown>
+              </div>
+            </div>
+          )}
+        </motion.div>
       </div>
     </div>
   );
