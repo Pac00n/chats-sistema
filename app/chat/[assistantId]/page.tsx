@@ -11,6 +11,7 @@ import { getAssistantById } from "@/lib/assistants"
 import { ArrowLeft, Send, Loader2, Paperclip, X, RefreshCw, AlertTriangle } from "lucide-react"
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
+import ReactMarkdown from "react-markdown"
 
 // Type definition
 type Message = {
@@ -390,7 +391,15 @@ function ChatPageContent() {
                       {message.content && (
                         <div className="p-3">
                           <div className="whitespace-pre-wrap">
-                            {message.role === "assistant" ? formatAssistantMessage(message.content) : message.content}
+                            {message.role === "assistant" ? (
+                              <div className="prose prose-slate prose-sm max-w-none">
+                                <ReactMarkdown>
+                                  {formatAssistantMessage(message.content)}
+                                </ReactMarkdown>
+                              </div>
+                            ) : (
+                              message.content
+                            )}
                           </div>
                         </div>
                       )}
