@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 export const runtime = "nodejs";
-export const maxDuration = 180; // Aumentamos la duración máxima por si las llamadas a herramientas y el análisis tardan más
+export const maxDuration = 60; // Ajustado a 60s para el plan Hobby de Vercel
 
 // --- OpenAI Client Initialization ---
 let openai: OpenAI | null = null;
@@ -57,23 +57,19 @@ async function executeGetChatMessagesFromDb(args: any): Promise<string> {
       query = query.eq('role', args.role);
     }
     if (args.keywords) {
-      // Simple ILIKE search for keywords in content. Adjust if your Supabase setup is different.
-      // This assumes 'content' is a text column.
-      // For multiple keywords, consider splitting args.keywords and chaining .or() conditions.
       query = query.ilike('content', `%${args.keywords}%`);
     }
     if (args.date_from) {
       query = query.gte('created_at', args.date_from);
     }
     if (args.date_to) {
-      // If date_to is just a date, you might want to set it to end of day for inclusive search
       const dateTo = new Date(args.date_to);
       dateTo.setHours(23, 59, 59, 999);
       query = query.lte('created_at', dateTo.toISOString());
     }
 
-    const limit = Math.min(Math.max(1, args.limit || 100), 500); // Default 100, min 1, max 500
-    query = query.limit(limit).order('created_at', { ascending: false }); // Get latest messages first
+    const limit = Math.min(Math.max(1, args.limit || 100), 500);
+    query = query.limit(limit).order('created_at', { ascending: false });
 
     const { data, error } = await query;
 
@@ -84,12 +80,11 @@ async function executeGetChatMessagesFromDb(args: any): Promise<string> {
 
     console.log(`[API Analyze Tool] Retrieved ${data?.length || 0} messages from Supabase.`);
     if (data && data.length > 0) {
-      // Consider summarizing if data is too large, or just return a subset of fields
       return JSON.stringify(data.map(msg => ({ 
         role: msg.role, 
         content: msg.content, 
         created_at: msg.created_at,
-        assistant_id: msg.assistant_id // Include assistant_id for context
+        assistant_id: msg.assistant_id
       })));
     } else {
       return JSON.stringify({ message: "No relevant messages found matching the criteria." });
@@ -100,14 +95,13 @@ async function executeGetChatMessagesFromDb(args: any): Promise<string> {
   }
 }
 
-
 // --- Modified waitForRunCompletion to handle tool calls ---
 async function waitForRunCompletion(
   openaiClient: OpenAI,
   threadId: string,
   runId: string,
-  maxAttempts = 60, // Increased attempts due to potential tool calls
-  delay = 3000      // Increased delay
+  maxAttempts = 25, // Reducido para ajustarse a maxDuration de 60s (25*2s = 50s)
+  delay = 2000      // delay de 2s
 ): Promise<OpenAI.Beta.Threads.Runs.Run> {
   let run = await openaiClient.beta.threads.runs.retrieve(threadId, runId);
   let attempts = 0;
@@ -151,18 +145,16 @@ async function waitForRunCompletion(
             });
           } catch (submitError: any) {
              console.error("[API Analyze] Error submitting tool outputs:", submitError);
-             // Potentially retry or handle error. For now, we'll let the loop continue and re-fetch run status.
           }
         } else {
           console.warn("[API Analyze] Required action was to submit tool outputs, but no tool outputs were generated.");
-          // This case should ideally not happen if toolCalls were present.
         }
       } else {
         console.error("[API Analyze] Unknown required_action type:", run.required_action?.type);
         throw new Error(`Unknown required_action type: ${run.required_action?.type}`);
       }
     } else if (["completed", "failed", "cancelled", "expired"].includes(run.status)) {
-      break; // Exit loop if run is in a terminal state
+      break;
     }
     attempts++;
   }
