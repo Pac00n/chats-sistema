@@ -119,8 +119,7 @@ export async function POST(req: NextRequest) {
                   for (const contentPart of assistantMessage.content) {
                     if (contentPart.type === 'text') {
                       assistantReplyContent += contentPart.text.value + "
-"; // Corrected: Ensure this is a single line with 
-
+";
                     }
                   }
                 }

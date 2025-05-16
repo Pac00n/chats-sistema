@@ -2,7 +2,7 @@
 
 import type React from "react";
 import { useState, useEffect, useRef, Suspense, useCallback } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,7 +13,6 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 
-// Type definition
 type Message = {
   id: string;
   role: "user" | "assistant";
@@ -157,9 +156,10 @@ function ChatPageContent() {
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         let eolIndex;
+        // Corrected line for the SSE delimiter
         while ((eolIndex = buffer.indexOf('
 
-')) !== -1) { // THIS IS THE CRITICAL LINE
+')) !== -1) { 
           const line = buffer.substring(0, eolIndex).trim();
           buffer = buffer.substring(eolIndex + 2);
           if (line.startsWith('data:')) {
