@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Clases de animación para el indicador de escritura */
+.animation-delay-200 {
+  animation-delay: 0.2s;
+}
+
+.animation-delay-400 {
+  animation-delay: 0.4s;
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

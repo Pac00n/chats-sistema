@@ -123,20 +123,41 @@ export async function POST(req: NextRequest) {
       // else console.log('[Supabase] User message saved successfully.');
     }
 
+    // Configurar el encoder para SSE
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
         try {
+          console.log(`[API Chat] Iniciando streaming de eventos para thread ${currentThreadId} con assistant ${openaiAssistantId}`);
+          
+          // Crear un stream con la API de OpenAI Assistants
           const runStream = openai!.beta.threads.runs.stream(currentThreadId!, {
             assistant_id: openaiAssistantId,
           });
-
+          
+          // Enviar inmediatamente un evento de inicio para que el cliente sepa que el stream comenzó
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "stream.started", data: { message: "Iniciando procesamiento..." }, threadId: currentThreadId })}\n\n`));
+          
+          // Procesar cada evento del stream
           for await (const event of runStream) {
+            // Construir el payload con información útil para el cliente
             const payload = { type: event.event, data: event.data, threadId: currentThreadId };
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}
-
-`));
-
+            
+            // Enviar el evento al cliente
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+            
+            // Registrar eventos clave en el servidor (opcional para depuración)
+            if (event.event === 'thread.message.delta' && event.data.delta.content?.[0]?.type === 'text') {
+              // Solo registrar el primer trozo de cada mensaje para no saturar los logs
+              const textContent = event.data.delta.content[0].text.value;
+              if (textContent.length > 100) {
+                console.log(`[API Chat] Recibido delta de mensaje: ${textContent.substring(0, 100)}...`);
+              } else {
+                console.log(`[API Chat] Recibido delta de mensaje: ${textContent}`);
+              }
+            }
+            
+            // Gestionar el evento de mensaje completado
             if (event.event === 'thread.message.completed') {
               if (supabase) {
                 const assistantMessage = event.data;

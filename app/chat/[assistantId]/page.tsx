@@ -136,31 +136,61 @@ function ChatPageContent() {
     let assistantMessagePlaceholderId: string | null = null, accumulatedContent = "";
 
     try {
+      console.log("[Chat Client] Enviando solicitud al servidor...");
       const response = await fetch("/api/chat", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assistantId: assistant?.id, message: currentInput, imageBase64: currentImageBase64, threadId: currentThreadId, employeeToken: employeeToken.current }),
+        method: "POST", 
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          assistantId: assistant?.id, 
+          message: currentInput, 
+          imageBase64: currentImageBase64, 
+          threadId: currentThreadId, 
+          employeeToken: employeeToken.current 
+        }),
         signal,
       });
+      
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: "Error del servidor." }));
         throw new Error(errorData.error || `Error: ${response.status}`);
       }
+      
       if (!response.body) throw new Error("Respuesta sin cuerpo.");
-      const reader = response.body.getReader(), decoder = new TextDecoder("utf-8");
+      
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
       let buffer = "";
+      
+      // Crear mensaje placeholder para la respuesta del asistente
       assistantMessagePlaceholderId = `assistant-stream-${Date.now()}`;
-      setMessages((prev) => [...prev, { id: assistantMessagePlaceholderId!, role: "assistant", content: "", timestamp: new Date(), isStreaming: true }]);
-
+      setMessages((prev) => [...prev, { 
+        id: assistantMessagePlaceholderId!, 
+        role: "assistant", 
+        content: "", 
+        timestamp: new Date(), 
+        isStreaming: true 
+      }]);
+      
+      console.log("[Chat Client] Iniciando procesamiento del stream...");
+      
+      // Procesar el stream de SSE
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
+        if (done) {
+          console.log("[Chat Client] Stream completado");
+          break;
+        }
+        
+        // Decodificar los datos recibidos y añadirlos al buffer
+        const chunk = decoder.decode(value, { stream: true });
+        buffer += chunk;
+        
+        // Buscar eventos SSE completos en el buffer (separados por '\n\n')
         let eolIndex;
-        while ((eolIndex = buffer.indexOf('
-
-')) !== -1) { 
+        while ((eolIndex = buffer.indexOf('\n\n')) !== -1) { 
           const line = buffer.substring(0, eolIndex).trim();
           buffer = buffer.substring(eolIndex + 2);
+          
           if (line.startsWith('data:')) {
             const jsonData = line.substring(5).trim();
             try {
@@ -271,7 +301,22 @@ function ChatPageContent() {
                     {message.role === "user" ? (<div className="h-8 w-8 ml-3 bg-slate-800 text-slate-100 flex items-center justify-center rounded-full font-semibold shrink-0 shadow-md">U</div>) : (<div className={`h-8 w-8 mr-3 ${assistant.bgColor} flex items-center justify-center rounded-full font-semibold shrink-0 shadow-md`}>{assistant?.name.charAt(0)}</div>)}
                     <div className={`rounded-lg shadow-md transition-all relative ${message.role === "user" ? "bg-sistema-primary text-white" : "bg-white text-slate-800 border border-slate-200"}`}>
                       {message.role === "user" && message.imageBase64 && (<div className="p-2 border-b border-sistema-primary-dark/30"><Image src={message.imageBase64 || "/placeholder.svg"} alt="Imagen" width={200} height={150} className="rounded-md" /></div>)}
-                      {(message.content || message.isStreaming) && (<div className="p-3"><div className="whitespace-pre-wrap">{message.role === "assistant" ? (<div className="prose prose-slate prose-sm max-w-none"><ReactMarkdown>{message.isStreaming && !message.content.trim() ? "..." : formatAssistantMessage(message.content)}</ReactMarkdown></div>) : (message.content)}</div></div>)}
+                      {(message.content || message.isStreaming) && (<div className="p-3"><div className="whitespace-pre-wrap">
+                        {message.role === "assistant" ? (
+                          <div className="prose prose-slate prose-sm max-w-none">
+                            <ReactMarkdown>
+                              {formatAssistantMessage(message.content)}
+                            </ReactMarkdown>
+                            {message.isStreaming && (
+                              <span className="inline-block ml-1 animate-pulse">
+                                <span className="inline-block w-1 h-4 bg-gray-500 rounded-full mr-0.5"></span>
+                                <span className="inline-block w-1 h-4 bg-gray-500 rounded-full mr-0.5 animation-delay-200"></span>
+                                <span className="inline-block w-1 h-4 bg-gray-500 rounded-full animation-delay-400"></span>
+                              </span>
+                            )}
+                          </div>
+                        ) : (message.content)}
+                      </div></div>)}
                       <div className={`text-xs px-3 pb-2 ${message.role === "user" ? "text-white/70" : "text-slate-500"} ${(message.content || message.isStreaming) ? "mt-1" : ""}`}>{formatTime(message.timestamp)}</div>
                       {message.id === "welcome" && <div className={`absolute -top-1 -right-1 h-2 w-2 rounded-full bg-sistema-primary animate-ping ${message.content ? "" : "hidden"}`}></div>}
                     </div>
