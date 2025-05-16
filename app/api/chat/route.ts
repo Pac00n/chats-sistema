@@ -5,7 +5,7 @@ import { Buffer } from "buffer";
 import { createClient } from '@supabase/supabase-js';
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300; // Aumentado para permitir streams más largos, ajusta según tu plan de Vercel y necesidades.
 
 // --- OpenAI Client (robust initialization) ---
 let openai: OpenAI | null = null;
@@ -40,59 +40,22 @@ if (supabaseUrl && supabaseServiceRoleKey) {
 }
 // --- End Supabase Client ---
 
-const waitForRunCompletion = async (
-  openaiClient: OpenAI, // Assumed to be non-null when called
-  threadId: string,
-  runId: string,
-  maxAttempts = 45,
-  delay = 2000
-): Promise<OpenAI.Beta.Threads.Runs.Run> => {
-  let run = await openaiClient.beta.threads.runs.retrieve(threadId, runId);
-  let attempts = 0;
-  while (["queued", "in_progress", "cancelling"].includes(run.status) && attempts < maxAttempts) {
-    await new Promise((resolve) => setTimeout(resolve, delay));
-    attempts++;
-    console.log(
-      `[API Chat] Waiting for OpenAI run (${threadId}/${runId}). Attempt ${attempts}. Status: ${run.status}`
-    );
-    try {
-      run = await openaiClient.beta.threads.runs.retrieve(threadId, runId);
-    } catch (error) {
-      console.error(
-        `[API Chat] Error retrieving OpenAI run status ${runId} (attempt ${attempts}):`,
-        error
-      );
-    }
-  }
-  console.log(`[API Chat] OpenAI run ${runId} finished with status: ${run.status}`);
-  return run;
-};
-
 export async function POST(req: NextRequest) {
-  console.log("[API Chat] Received POST request /api/chat");
+  console.log("[API Chat] Received POST request /api/chat for streaming.");
+
+  if (!openai) {
+    return NextResponse.json(
+      { error: "Incomplete server configuration for OpenAI assistants (API Key)." },
+      { status: 500 }
+    );
+  }
+
   try {
-    if (!openai) {
-      console.error(
-        "[API Chat] Attempt to use API but OpenAI client is not initialized (API Key issue?)."
-      );
-      return NextResponse.json(
-        { error: "Incomplete server configuration for OpenAI assistants (API Key)." },
-        { status: 500 }
-      );
-    }
-    if (!supabase) {
-        console.error(
-            "[API Chat] Attempt to use Database but Supabase client is not initialized."
-        );
-    }
-
     const body = await req.json();
-    console.log("[API Chat] Full request body received:", JSON.stringify(body, null, 2));
-
     const { assistantId, message, imageBase64, threadId: existingThreadId, employeeToken } = body;
-    
+
     console.log(
-      `[API Chat] Received data (destructured): assistantId=${assistantId}, message=${message ? message.substring(0, 30) + "..." : "N/A"}, imageBase64=${imageBase64 ? "Present" : "Absent"}, threadId=${existingThreadId}, employeeToken=${employeeToken}`
+      `[API Chat] Request Data: assistantId=${assistantId}, message=${message ? message.substring(0, 30) + "..." : "N/A"}, imageBase64=${imageBase64 ? "Present" : "Absent"}, threadId=${existingThreadId}, employeeToken=${employeeToken}`
     );
 
     if (typeof assistantId !== "string" || !assistantId)
@@ -114,7 +77,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: errorMsg }, { status: !assistantConfig ? 404 : 500 });
     }
     const openaiAssistantId = assistantConfig.assistant_id;
-    console.log(`[API Chat] Using OpenAI assistant_id: ${openaiAssistantId}`);
 
     let currentThreadId = existingThreadId;
     if (!currentThreadId) {
@@ -132,10 +94,11 @@ export async function POST(req: NextRequest) {
     } else {
       console.log("[API Chat] Using existing OpenAI thread:", currentThreadId);
     }
-    if (!currentThreadId) {
-      console.error("[API Chat] Thread ID is null after creation/verification.");
+     if (!currentThreadId) { // Double check, should not happen if logic above is correct
+      console.error("[API Chat] Thread ID is null after creation/verification attempt.");
       return NextResponse.json({ error: "Internal error managing conversation ID" }, { status: 500 });
     }
+
 
     let fileId: string | null = null;
     if (typeof imageBase64 === "string" && imageBase64.startsWith("data:image")) {
@@ -145,11 +108,10 @@ export async function POST(req: NextRequest) {
         const imageBuffer = Buffer.from(base64Data, "base64");
         const mimeType = imageBase64.substring("data:".length, imageBase64.indexOf(";base64"));
         const fileName = `image.${mimeType.split("/")[1] || "bin"}`;
-        console.log(`[API Chat] Uploading image ${fileName} (${mimeType}) to OpenAI...`);
-
+        
         const fileObject = await openai.files.create({
           file: new File([imageBuffer], fileName, { type: mimeType }),
-          purpose: "vision",
+          purpose: "vision", // or "assistants" if for retrieval/code_interpreter with Assistants API
         });
         fileId = fileObject.id;
         console.log(`[API Chat] Image uploaded successfully. File ID: ${fileId}`);
@@ -164,13 +126,15 @@ export async function POST(req: NextRequest) {
       messageContentList.push({ type: "text", text: message });
     }
     if (fileId) {
+      // For Assistants API, images for "vision" purpose are typically included as image_url or image_file in content.
+      // If the assistant is using "retrieval" or "code_interpreter" with this file, it should be attached to the assistant or message with purpose "assistants".
+      // For vision with assistants, the `image_file` type is correct for message content.
       messageContentList.push({ type: "image_file", image_file: { file_id: fileId } });
     }
+    
     if (messageContentList.length === 0) {
-      console.warn(
-        "[API Chat] No content to send (neither valid text nor processed image)."
-      );
-      messageContentList.push({ type: "text", text: "(Attempt to send empty message or with failed image)" });
+       // Should not happen due to earlier validation, but as a safeguard:
+      return NextResponse.json({ error: "Cannot send an empty message" }, { status: 400 });
     }
 
     let openAIUserMessageId: string | undefined;
@@ -178,32 +142,28 @@ export async function POST(req: NextRequest) {
       const createdUserMessage = await openai.beta.threads.messages.create(currentThreadId, {
         role: "user",
         content: messageContentList,
+        // attachments: fileId ? [{ file_id: fileId, tools: [{type: "code_interpreter"}, {type: "file_search"}] }] : undefined, // Use attachments if file is for tools
       });
       openAIUserMessageId = createdUserMessage.id;
-      console.log(`[API Chat] Message added to thread ${currentThreadId}. Parts: ${messageContentList.length}, OpenAI Message ID: ${openAIUserMessageId}`);
+      console.log(`[API Chat] User message added to thread ${currentThreadId}. OpenAI Message ID: ${openAIUserMessageId}`);
 
-      if (supabase && messageContentList.length > 0) {
+      if (supabase) {
         const userMessageData = {
           thread_id: currentThreadId,
           message_openai_id: openAIUserMessageId,
           role: 'user',
-          content: message, 
+          content: message || (fileId ? "[Image Sent]" : "[Empty Message]"), // Use actual message or placeholder
           assistant_id: assistantConfig.id, 
           employee_token: employeeToken, 
           image_file_id: fileId,
-          created_at: new Date().toISOString(), // Explicitly set created_at
+          created_at: new Date().toISOString(),
         };
         const { error: userMessageError } = await supabase
           .from('chat_messages') 
           .insert([userMessageData]);
-
-        if (userMessageError) {
-          console.error('[Supabase] Error saving user message:', userMessageError);
-        } else {
-          console.log('[Supabase] User message saved successfully.');
-        }
+        if (userMessageError) console.error('[Supabase] Error saving user message:', userMessageError);
+        else console.log('[Supabase] User message saved successfully.');
       }
-
     } catch (msgError) {
       console.error(`[API Chat] Error adding message to thread ${currentThreadId}:`, msgError);
       return NextResponse.json(
@@ -212,102 +172,93 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let run;
-    try {
-      run = await openai.beta.threads.runs.create(currentThreadId, { assistant_id: openaiAssistantId });
-      console.log(`[API Chat] Run ${run.id} created for thread ${currentThreadId} with assistant ${openaiAssistantId}`);
-    } catch (runCreateError) {
-      console.error(`[API Chat] Error starting run for assistant ${openaiAssistantId}:`, runCreateError);
-      return NextResponse.json(
-        { error: "Could not start processing with OpenAI assistant" },
-        { status: 500 }
-      );
-    }
+    // ---- MODIFIED PART FOR STREAMING ----
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          const runStream = openai!.beta.threads.runs.stream(currentThreadId!, {
+            assistant_id: openaiAssistantId,
+          });
 
-    const completedRun = await waitForRunCompletion(openai, currentThreadId, run.id);
+          for await (const event of runStream) {
+            const payload = { type: event.event, data: event.data, threadId: currentThreadId }; // Include threadId for client if needed
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}
 
-    if (completedRun.status !== "completed") {
-      console.error(
-        `[API Chat] Run ${run.id} not completed. Final status: ${completedRun.status}. Last error:`,
-        completedRun.last_error
-      );
-      const errorMsg =
-        completedRun.last_error?.message || `OpenAI assistant execution failed or incomplete (${completedRun.status}).`;
-      const errorCode = completedRun.last_error?.code ? ` (Code: ${completedRun.last_error.code})` : "";
-      return NextResponse.json({ error: `${errorMsg}${errorCode}`, details: completedRun.last_error }, { status: 500 });
-    }
-    console.log(`[API Chat] Run ${run.id} completed.`);
+`));
 
-    let assistantReply = "No valid text response found from the assistant.";
-    let openAIAssistantMessageId: string | undefined;
+            if (event.event === 'thread.message.completed') {
+              if (supabase) {
+                const assistantMessage = event.data;
+                let assistantReplyContent = "";
+                if (assistantMessage.content) {
+                  for (const contentPart of assistantMessage.content) {
+                    if (contentPart.type === 'text') {
+                      assistantReplyContent += contentPart.text.value + "
+";
+                    }
+                  }
+                }
+                assistantReplyContent = assistantReplyContent.trim();
 
-    try {
-      const threadMessages = await openai.beta.threads.messages.list(currentThreadId, { order: "asc" });
-      if (!threadMessages.data) throw new Error("No messages found in the conversation");
-      const assistantResponses = threadMessages.data.filter((msg) => msg.role === "assistant" && msg.run_id === run.id);
-      if (assistantResponses.length === 0)
-        throw new Error("The assistant did not generate a response for this run.");
-      const lastAssistantMessage = assistantResponses[assistantResponses.length - 1];
-      openAIAssistantMessageId = lastAssistantMessage.id;
-
-      let foundText = false;
-      if (lastAssistantMessage.content?.length > 0) {
-        for (const contentPart of lastAssistantMessage.content) {
-          if (contentPart.type === "text" && contentPart.text?.value) {
-            assistantReply = contentPart.text.value;
-            foundText = true;
-            break;
+                const assistantMessageData = {
+                  thread_id: currentThreadId,
+                  message_openai_id: assistantMessage.id,
+                  role: 'assistant',
+                  content: assistantReplyContent || "[No text content in assistant message]",
+                  assistant_id: assistantConfig.id, // Your internal assistant ID
+                  employee_token: employeeToken,
+                  created_at: new Date().toISOString(),
+                };
+                const { error: assistantMessageError } = await supabase
+                  .from('chat_messages')
+                  .insert([assistantMessageData]);
+                if (assistantMessageError) console.error('[Supabase] Error saving assistant reply:', assistantMessageError);
+                else console.log('[Supabase] Assistant reply saved successfully via stream event.');
+              }
+            }
+            
+            if (event.event === 'thread.run.completed' || event.event === 'thread.run.failed' || event.event === 'thread.run.cancelled' || event.event === 'thread.run.expired') {
+              break; 
+            }
           }
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "stream.ended", data: { reason: "Run finished or stream naturally ended"}, threadId: currentThreadId })}
+
+`));
+          controller.close();
+        } catch (streamError: any) {
+          console.error("[API Chat] Error during OpenAI stream:", streamError);
+          try {
+            // Attempt to send an error event through SSE if stream hasn't closed
+            const errorPayload = { type: "error", data: { message: "Stream error", details: streamError.message }, threadId: currentThreadId };
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorPayload)}
+
+`));
+          } catch (enqueueError) {
+            console.error("[API Chat] Failed to enqueue stream error event:", enqueueError);
+          }
+          controller.close(); // Ensure controller is closed on error
         }
       }
-      if (!foundText)
-        console.warn(
-          `[API Chat] Assistant message ${openAIAssistantMessageId} did not contain valid text part or message not found.`
-        );
-      
-      if (supabase && assistantReply) {
-        const assistantMessageData = {
-            thread_id: currentThreadId,
-            message_openai_id: openAIAssistantMessageId,
-            role: 'assistant',
-            content: assistantReply,
-            assistant_id: assistantConfig.id, 
-            employee_token: employeeToken,
-            created_at: new Date().toISOString(), // Explicitly set created_at
-        };
-        const { error: assistantMessageError } = await supabase
-            .from('chat_messages') 
-            .insert([assistantMessageData]);
+    });
 
-        if (assistantMessageError) {
-            console.error('[Supabase] Error saving assistant reply:', assistantMessageError);
-        } else {
-            console.log('[Supabase] Assistant reply saved successfully.');
-        }
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        // Add CORS headers if your frontend is on a different domain/port during local dev
+        // 'Access-Control-Allow-Origin': '*', 
+        // 'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        // 'Access-Control-Allow-Headers': 'Content-Type',
       }
+    });
 
-    } catch (listMsgError) {
-      console.error(`[API Chat] Error listing messages from thread ${currentThreadId}:`, listMsgError);
-      const errorDetail = listMsgError instanceof Error ? listMsgError.message : "Unknown error";
-      return NextResponse.json(
-        {
-          error: "Could not get final response from OpenAI assistant",
-          details: errorDetail,
-          ...(currentThreadId && { threadId: currentThreadId }),
-        },
-        { status: 500 }
-      );
-    }
-
-    console.log(
-      `[API Chat] Assistant Response (${assistantId}) for thread ${currentThreadId}:`,
-      assistantReply.substring(0, 100) + "..."
-    );
-    return NextResponse.json({ reply: assistantReply, threadId: currentThreadId });
-  } catch (error) {
+  } catch (error: any) {
     console.error("[API Chat] Unhandled general error in POST /api/chat:", error);
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred on the server.";
-    const details = process.env.NODE_ENV === "development" ? errorMessage : "Error processing your request.";
-    return NextResponse.json({ error: "Internal server error", details: details }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error", details: error.message || "An unknown error occurred." },
+      { status: 500 }
+    );
   }
 }

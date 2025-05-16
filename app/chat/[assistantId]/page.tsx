@@ -1,60 +1,65 @@
-"use client"
+"use client";
 
-import type React from "react"
-import { useState, useEffect, useRef, Suspense } from "react"
-import { useParams, useRouter, useSearchParams } from "next/navigation"
-import Image from "next/image"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { getAssistantById } from "@/lib/assistants"
-import { ArrowLeft, Send, Loader2, Paperclip, X, RefreshCw, AlertTriangle } from "lucide-react"
-import Link from "next/link"
-import { motion, AnimatePresence } from "framer-motion"
-import ReactMarkdown from "react-markdown"
+import type React from "react";
+import { useState, useEffect, useRef, Suspense, useCallback } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import Image from "next/image";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { getAssistantById } from "@/lib/assistants";
+import { ArrowLeft, Send, Loader2, Paperclip, X, RefreshCw, AlertTriangle } from "lucide-react";
+import Link from "next/link";
+import { motion, AnimatePresence } from "framer-motion";
+import ReactMarkdown from "react-markdown";
 
 // Type definition
 type Message = {
-  id: string
-  role: "user" | "assistant"
-  content: string
-  imageBase64?: string | null
-  timestamp: Date
-}
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  imageBase64?: string | null;
+  timestamp: Date;
+  // For streaming, we might have an incomplete message
+  isStreaming?: boolean;
+};
 
 // Helper function to format assistant messages
 const formatAssistantMessage = (content: string): string => {
-  const citationRegex = /【.*?】/g
-  return content.replace(citationRegex, "").trim()
-}
+  const citationRegex = /【.*?】/g;
+  return content.replace(citationRegex, "").trim();
+};
 
 function ChatPageContent() {
-  const params = useParams()
-  // const router = useRouter() 
-  const searchParams = useSearchParams()
-  const assistantId = params.assistantId as string
-  const assistant = getAssistantById(assistantId)
-  const employeeToken = searchParams.get("employeeToken")
+  const params = useParams();
+  const searchParams = useSearchParams();
+  const assistantId = params.assistantId as string;
+  const assistant = getAssistantById(assistantId);
+  const employeeTokenFromUrl = searchParams.get("employeeToken");
 
-  console.log("[ChatPageContent] employeeToken from URL params:", employeeToken);
-
-  const [messages, setMessages] = useState<Message[]>([])
-  const [input, setInput] = useState("")
-  const [imageBase64, setImageBase64] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [threadId, setThreadId] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const [scrollY, setScrollY] = useState(0)
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [currentThreadId, setCurrentThreadId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [scrollY, setScrollY] = useState(0);
+  const streamControllerRef = useRef<AbortController | null>(null);
+  const employeeToken = useRef<string | null>(null);
 
   useEffect(() => {
-    const handleScroll = () => setScrollY(window.scrollY)
-    window.addEventListener("scroll", handleScroll, { passive: true })
-    return () => window.removeEventListener("scroll", handleScroll)
-  }, [])
+    employeeToken.current = employeeTokenFromUrl;
+  }, [employeeTokenFromUrl]);
 
-  const showWelcomeMessage = () => {
+  useEffect(() => {
+    const handleScroll = () => setScrollY(window.scrollY);
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  const showWelcomeMessage = useCallback(() => {
     if (assistant) {
       setMessages([
         {
@@ -63,180 +68,295 @@ function ChatPageContent() {
           content: "Cuando quieras, empezamos a hablar sobre cómo podemos potenciarte con IA.",
           timestamp: new Date(),
         },
-      ])
+      ]);
     }
-  }
-  
+  }, [assistant]);
+
   useEffect(() => {
-    if (!employeeToken) {
-        return; 
+    if (!employeeToken.current) {
+      // If no token in ref, try to get from localStorage if it was set by a previous load of this page with token
+      const potentialToken = localStorage.getItem("lastKnownEmployeeToken");
+      if(potentialToken) employeeToken.current = potentialToken;
+      else {
+        showWelcomeMessage(); // No token, show welcome, handleSubmit will be blocked.
+        return;
+      }
     }
+    
+    // Store the current token for future loads if it's different
+    if (employeeTokenFromUrl && localStorage.getItem("lastKnownEmployeeToken") !== employeeTokenFromUrl) {
+        localStorage.setItem("lastKnownEmployeeToken", employeeTokenFromUrl);
+    }
+
     try {
-      const storedThreadId = localStorage.getItem(`threadId_${assistantId}_${employeeToken}`)
+      const storedThreadId = localStorage.getItem(`threadId_${assistantId}_${employeeToken.current}`);
       if (storedThreadId) {
-        setThreadId(storedThreadId)
-        const storedMessages = localStorage.getItem(`messages_${assistantId}_${employeeToken}`)
+        setCurrentThreadId(storedThreadId);
+        const storedMessages = localStorage.getItem(`messages_${assistantId}_${employeeToken.current}`);
         if (storedMessages) {
           try {
-            const parsedMessages = JSON.parse(storedMessages)
+            const parsedMessages = JSON.parse(storedMessages);
             const messagesWithDates = parsedMessages.map((msg: any) => ({
               ...msg,
               timestamp: new Date(msg.timestamp),
-            }))
-            setMessages(messagesWithDates)
+              isStreaming: false,
+            }));
+            setMessages(messagesWithDates);
           } catch (e) {
-            console.error("Error loading previous messages:", e)
-            showWelcomeMessage()
+            console.error("Error loading previous messages:", e);
+            showWelcomeMessage();
           }
         } else {
-          showWelcomeMessage()
+          showWelcomeMessage();
         }
       } else {
-        showWelcomeMessage()
+        showWelcomeMessage();
       }
     } catch (e) {
-      console.error("Error initializing chat:", e)
-      showWelcomeMessage()
+      console.error("Error initializing chat:", e);
+      showWelcomeMessage();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assistantId, employeeToken]) 
+  }, [assistantId, showWelcomeMessage, employeeTokenFromUrl]);
 
   useEffect(() => {
-    if (!employeeToken) return;
-    if (messages.length > 0 && threadId && messages[0].id !== 'welcome') { 
+    if (!employeeToken.current) return;
+    const messagesToSave = messages.filter(msg => msg.role !== 'assistant' || !msg.isStreaming);
+    if (messagesToSave.length > 0 && currentThreadId && messagesToSave[0]?.id !== 'welcome') {
       try {
-        localStorage.setItem(`messages_${assistantId}_${employeeToken}`, JSON.stringify(messages))
+        localStorage.setItem(`messages_${assistantId}_${employeeToken.current}`, JSON.stringify(messagesToSave));
       } catch (e) {
-        console.error("Error saving messages to localStorage:", e)
+        console.error("Error saving messages to localStorage:", e);
       }
     }
-  }, [messages, assistantId, threadId, employeeToken])
+  }, [messages, assistantId, currentThreadId]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isLoading]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
+    const file = event.target.files?.[0];
     if (file) {
-      const reader = new FileReader()
-      reader.onloadend = () => setImageBase64(reader.result as string)
-      reader.readAsDataURL(file)
+      const reader = new FileReader();
+      reader.onloadend = () => setImageBase64(reader.result as string);
+      reader.readAsDataURL(file);
     }
-    if (event.target) event.target.value = ""
-  }
+    if (event.target) event.target.value = "";
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("[ChatPage] handleSubmit: employeeToken value at start of function:", employeeToken);
-    console.log("[ChatPage] handleSubmit: input value:", input);
-    console.log("[ChatPage] handleSubmit: imageBase64 present:", !!imageBase64);
-    console.log("[ChatPage] handleSubmit: isLoading state:", isLoading);
-
-    if ((!input.trim() && !imageBase64) || isLoading || !employeeToken) {
-      console.warn("[ChatPage] handleSubmit: Submission prevented due to guard condition.");
-      if (!input.trim() && !imageBase64) {
-        console.warn("[ChatPage] Reason: Input empty AND no image.");
-      }
-      if (isLoading) {
-        console.warn("[ChatPage] Reason: isLoading is true.");
-      }
-      if (!employeeToken) {
-        console.warn("[ChatPage] Reason: employeeToken is falsy.");
+    if ((!input.trim() && !imageBase64) || isLoading || !employeeToken.current) {
+      if (!employeeToken.current) {
         setError("No se pudo enviar el mensaje. Falta el token de empleado. Por favor, recarga la página usando el enlace correcto.");
       }
       return;
     }
-    console.log("[ChatPage] handleSubmit: Guard condition passed. Proceeding with submission.");
+
     setError(null);
+    setIsLoading(true);
+
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: `user-${Date.now()}`,
       role: "user",
       content: input,
       imageBase64,
       timestamp: new Date(),
     };
     setMessages((prev) => [...prev, userMessage]);
+
     const currentInput = input;
     const currentImageBase64 = imageBase64;
     setInput("");
     setImageBase64(null);
-    setIsLoading(true);
-    const payload = {
-      assistantId: assistant?.id,
-      message: currentInput,
-      imageBase64: currentImageBase64,
-      threadId,
-      employeeToken,
-    };
-    console.log("[ChatPage] handleSubmit: Sending payload to /api/chat:", payload);
+
+    if (streamControllerRef.current) {
+      streamControllerRef.current.abort();
+    }
+    streamControllerRef.current = new AbortController();
+    const signal = streamControllerRef.current.signal;
+
+    let assistantMessagePlaceholderId: string | null = null;
+    let accumulatedContent = "";
+
     try {
-      const endpoint = "/api/chat";
-      const response = await fetch(endpoint, {
+      const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          assistantId: assistant?.id,
+          message: currentInput,
+          imageBase64: currentImageBase64,
+          threadId: currentThreadId,
+          employeeToken: employeeToken.current,
+        }),
+        signal,
       });
-      const data = await response.json();
+
       if (!response.ok) {
-        console.error("Server error:", data.error, data.details);
-        setMessages((prev) => prev.filter((msg) => msg.id !== userMessage.id));
-        throw new Error(data.error || "Error in server response");
+        const errorData = await response.json().catch(() => ({ error: "Error en la respuesta del servidor." }));
+        throw new Error(errorData.error || `Error: ${response.status} ${response.statusText}`);
       }
-      if (data.threadId && (!threadId || threadId !== data.threadId) ) { 
-        setThreadId(data.threadId);
-        if(employeeToken){
-          try {
-            localStorage.setItem(`threadId_${assistantId}_${employeeToken}`, data.threadId);
-          } catch (e) {
-            console.error("Error saving threadId to localStorage:", e);
+
+      if (!response.body) {
+        throw new Error("La respuesta del servidor no contiene un cuerpo.");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+      
+      assistantMessagePlaceholderId = `assistant-stream-${Date.now()}`;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: assistantMessagePlaceholderId!,
+          role: "assistant",
+          content: "",
+          timestamp: new Date(),
+          isStreaming: true,
+        },
+      ]);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        let eolIndex;
+        // Corrected line with double backslash for the newlines
+        while ((eolIndex = buffer.indexOf('
+
+')) !== -1) { 
+          const line = buffer.substring(0, eolIndex).trim();
+          buffer = buffer.substring(eolIndex + 2);
+
+          if (line.startsWith('data:')) {
+            const jsonData = line.substring(5).trim();
+            try {
+              const event = JSON.parse(jsonData);
+
+              if (event.threadId && event.threadId !== currentThreadId) {
+                setCurrentThreadId(event.threadId);
+                if (employeeToken.current) {
+                  localStorage.setItem(`threadId_${assistantId}_${employeeToken.current}`, event.threadId);
+                }
+              }
+
+              switch (event.type) {
+                case 'thread.message.delta':
+                  if (event.data.delta.content && event.data.delta.content[0].type === 'text') {
+                    const textChunk = event.data.delta.content[0].text.value;
+                    accumulatedContent += textChunk;
+                    setMessages((prevMessages) =>
+                      prevMessages.map((msg) =>
+                        msg.id === assistantMessagePlaceholderId
+                          ? { ...msg, content: accumulatedContent, isStreaming: true }
+                          : msg
+                      )
+                    );
+                  }
+                  break;
+                case 'thread.message.completed':
+                  setMessages((prevMessages) =>
+                    prevMessages.map((msg) =>
+                      msg.id === assistantMessagePlaceholderId
+                        ? { ...msg, content: accumulatedContent, isStreaming: false, id: event.data.id }
+                        : msg
+                    )
+                  );
+                  assistantMessagePlaceholderId = null; 
+                  accumulatedContent = "";
+                  break;
+                case 'thread.run.completed':
+                  setIsLoading(false);
+                  break;
+                case 'thread.run.failed':
+                case 'thread.run.cancelled':
+                case 'thread.run.expired':
+                  setError(event.data.last_error?.message || `El asistente finalizó con estado: ${event.type}`);
+                  setIsLoading(false);
+                  if (assistantMessagePlaceholderId) {
+                    setMessages(prev => prev.filter(msg => msg.id !== assistantMessagePlaceholderId));
+                  }
+                  break;
+                case 'error':
+                  setError(event.data.details || event.data.message || "Error en el stream del servidor.");
+                  setIsLoading(false);
+                  if (assistantMessagePlaceholderId) {
+                    setMessages(prev => prev.filter(msg => msg.id !== assistantMessagePlaceholderId));
+                  }
+                  break;
+                case 'stream.ended':
+                  setIsLoading(false);
+                  if (assistantMessagePlaceholderId) {
+                     setMessages((prevMessages) =>
+                        prevMessages.map((msg) =>
+                          msg.id === assistantMessagePlaceholderId && msg.isStreaming
+                            ? { ...msg, isStreaming: false } // Ensure it's marked as not streaming
+                            : msg
+                        )
+                      );
+                  }
+                  break;
+              }
+            } catch (e) {
+              console.error("Error parseando JSON del stream:", e, jsonData);
+            }
           }
         }
       }
-      const assistantMessage: Message = {
-        id: Date.now().toString(), 
-        role: "assistant",
-        content: data.reply,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
-    } catch (err) {
-      const error = err as Error;
-      setError(error.message);
-      console.error("Error in conversation:", error);
-      setMessages((prev) => prev.filter((msg) => msg.id !== userMessage.id)); 
-      setInput(currentInput);
-      setImageBase64(currentImageBase64);
+    } catch (err: any) {
+      console.error("Error en handleSubmit:", err);
+      if (err.name !== 'AbortError') {
+        setError(err.message || "Ocurrió un error al conectar con el asistente.");
+      }
+      if (assistantMessagePlaceholderId) {
+        setMessages((prev) => prev.filter((msg) => msg.id !== assistantMessagePlaceholderId));
+      }
+      if (err.name !== 'AbortError') {
+        setMessages((prev) => prev.filter((msg) => msg.id !== userMessage.id));
+        setInput(currentInput);
+        setImageBase64(currentImageBase64);
+      }
     } finally {
-      setIsLoading(false);
+      if (!(signal.aborted && isLoading)) { // if not aborted by a new request while still loading
+        setIsLoading(false); 
+      }
     }
   };
 
   const formatTime = (date: Date) => {
     try {
-      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     } catch (e) {
-      console.error("Error formatting time:", e)
-      return ""
+      console.error("Error formatting time:", e);
+      return "";
     }
-  }
+  };
 
   const startNewConversation = () => {
-    if (!employeeToken) return;
-    try {
-      localStorage.removeItem(`threadId_${assistantId}_${employeeToken}`)
-      localStorage.removeItem(`messages_${assistantId}_${employeeToken}`)
-    } catch (e) {
-      console.error("Error removing data from localStorage:", e)
+    if (!employeeToken.current) return;
+    if (streamControllerRef.current) {
+      streamControllerRef.current.abort();
     }
-    setThreadId(null)
-    setError(null)
-    setInput("")
-    setImageBase64(null)
-    showWelcomeMessage()
-  }
+    try {
+      localStorage.removeItem(`threadId_${assistantId}_${employeeToken.current}`);
+      localStorage.removeItem(`messages_${assistantId}_${employeeToken.current}`);
+    } catch (e) {
+      console.error("Error removing data from localStorage:", e);
+    }
+    setCurrentThreadId(null);
+    setError(null);
+    setInput("");
+    setImageBase64(null);
+    setIsLoading(false);
+    showWelcomeMessage();
+  };
 
-  if (!employeeToken) {
+  if (!employeeToken.current && !employeeTokenFromUrl) { 
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-slate-100 text-slate-800 p-4">
         <Card className="w-full max-w-md bg-white border-red-500 text-slate-800 shadow-lg">
@@ -269,7 +389,7 @@ function ChatPageContent() {
           </CardContent>
         </Card>
       </div>
-    )
+    );
   }
 
   return (
@@ -288,20 +408,16 @@ function ChatPageContent() {
       </div>
       <header className="bg-white border-b border-slate-200 py-2 px-4 shadow-sm sticky top-0 z-20">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
-          {/* Conditionally render the back link based on employeeToken presence */} 
-          {!employeeToken ? (
+          {!employeeTokenFromUrl ? (
             <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
               <ArrowLeft className="h-4 w-4 text-slate-600" />
               <Image src="/images/logo.png" alt="SISTEMA INGENIERÍA" width={120} height={40} className="h-8 w-auto" />
             </Link>
           ) : (
-            // If employeeToken exists, just show the logo, not as a link to home
             <div className="flex items-center gap-2">
-              {/* You could optionally still show an ArrowLeft but make it non-functional or for a different action */}
               <Image src="/images/logo.png" alt="SISTEMA INGENIERÍA" width={120} height={40} className="h-8 w-auto" />
             </div>
           )}
-          {/* Assistant Info in Header (remains the same) */} 
           {assistant && (
             <div className="flex items-center gap-2">
               <div
@@ -317,8 +433,6 @@ function ChatPageContent() {
           )}
         </div>
       </header>
-      {/* Rest of the chat UI (messages, input area, etc.) */}
-      {/* ... (existing code for chat messages, input area, etc. - no changes needed here for this specific request) ... */}
       <div className="relative z-10 flex flex-col flex-1 overflow-hidden">
         <AnimatePresence>
           {error && (
@@ -350,7 +464,7 @@ function ChatPageContent() {
             <AnimatePresence initial={false}>
               {messages.map((message, index) => (
                 <motion.div
-                  key={message.id}
+                  key={message.id} 
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3 }}
@@ -388,13 +502,13 @@ function ChatPageContent() {
                           />
                         </div>
                       )}
-                      {message.content && (
+                      {message.content || message.isStreaming ? ( 
                         <div className="p-3">
                           <div className="whitespace-pre-wrap">
                             {message.role === "assistant" ? (
                               <div className="prose prose-slate prose-sm max-w-none">
                                 <ReactMarkdown>
-                                  {formatAssistantMessage(message.content)}
+                                  {message.isStreaming && !message.content.trim() ? "..." : formatAssistantMessage(message.content)}
                                 </ReactMarkdown>
                               </div>
                             ) : (
@@ -402,11 +516,11 @@ function ChatPageContent() {
                             )}
                           </div>
                         </div>
-                      )}
+                      ) : null}
                       <div
                         className={`text-xs px-3 pb-2 ${
                           message.role === "user" ? "text-white/70" : "text-slate-500"
-                        } ${message.content ? "mt-1" : ""}`}
+                        } ${ (message.content || message.isStreaming) ? "mt-1" : ""}`}
                       >
                         {formatTime(message.timestamp)}
                       </div>
@@ -422,24 +536,20 @@ function ChatPageContent() {
                 </motion.div>
               ))}
             </AnimatePresence>
-            {isLoading && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex justify-start mt-4"
-              >
-                <div className="flex items-center">
-                  <div
-                    className={`h-8 w-8 mr-3 ${assistant.bgColor} text-slate-800 flex items-center justify-center rounded-full font-semibold flex-shrink-0 shadow-md`}
-                  >
-                    {assistant?.name.charAt(0)}
-                  </div>
-                  <div className="rounded-lg p-3 bg-white border border-slate-200 flex items-center shadow-md">
-                    <Loader2 className="h-4 w-4 animate-spin text-sistema-primary" />
-                    <span className="ml-2 text-sm text-slate-600">Escribiendo...</span>
-                  </div>
-                </div>
-              </motion.div>
+            {isLoading && !messages.some(m => m.role === 'assistant' && m.isStreaming) && (
+                 <motion.div className="flex justify-start mt-4">
+                    <div className="flex items-center">
+                      <div
+                        className={`h-8 w-8 mr-3 ${assistant.bgColor} text-slate-800 flex items-center justify-center rounded-full font-semibold flex-shrink-0 shadow-md`}
+                      >
+                        {assistant?.name.charAt(0)}
+                      </div>
+                      <div className="rounded-lg p-3 bg-white border border-slate-200 flex items-center shadow-md">
+                        <Loader2 className="h-4 w-4 animate-spin text-sistema-primary" />
+                        <span className="ml-2 text-sm text-slate-600">Conectando...</span>
+                      </div>
+                    </div>
+                  </motion.div>
             )}
             <div ref={messagesEndRef} />
           </div>
@@ -523,7 +633,7 @@ function ChatPageContent() {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 export default function ChatPage() {
