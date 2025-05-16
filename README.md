@@ -4,6 +4,8 @@
 
 ## Recent Updates
 
+- Added streaming functionality for more fluid assistant responses
+- Added visual typing indicator for streaming messages
 - Added support for Markdown rendering in chat responses
 - Fixed dependency conflicts in pnpm-lock.yaml
 - Improved UI for assistant analysis tool
