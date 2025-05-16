@@ -5,7 +5,7 @@ import { Buffer } from "buffer";
 import { createClient } from '@supabase/supabase-js';
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+export const maxDuration = 60; // Ajustado al límite máximo para plan hobby de Vercel
 
 let openai: OpenAI | null = null;
 const openAIApiKey = process.env.OPENAI_API_KEY;
