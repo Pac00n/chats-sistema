@@ -165,60 +165,141 @@ async function waitForRunCompletion(
 // --- API POST Handler ---
 export async function POST(req: NextRequest) {
   console.log("[API Analyze] Received POST request /api/analyze");
+  
+  // Asegurarse de que todas las respuestas sean JSON válido
   if (!openai) {
+    console.error("[API Analyze] OpenAI client not initialized");
     return NextResponse.json({ error: "OpenAI client not initialized." }, { status: 500 });
   }
 
   try {
-    const body = await req.json();
-    const userQuery = body.query;
-    console.log(`[API Analyze] Received data: userQuery=${userQuery ? userQuery.substring(0, 100) + "..." : "N/A"}`);
+    // Extraer y validar los datos de la solicitud
+    let body, userQuery;
+    try {
+      body = await req.json();
+      userQuery = body.query;
+      console.log(`[API Analyze] Received data: userQuery=${userQuery ? userQuery.substring(0, 100) + "..." : "N/A"}`);
+    } catch (parseError) {
+      console.error("[API Analyze] Error parsing request JSON:", parseError);
+      return NextResponse.json({ error: "Invalid JSON in request body" }, { status: 400 });
+    }
 
     if (typeof userQuery !== "string" || !userQuery.trim()) {
       return NextResponse.json({ error: "La consulta (query) es requerida." }, { status: 400 });
     }
 
-    const thread = await openai.beta.threads.create();
-    console.log("[API Analyze] New OpenAI thread created:", thread.id);
+    // Crear un nuevo thread para el análisis
+    let thread;
+    try {
+      thread = await openai.beta.threads.create();
+      console.log("[API Analyze] New OpenAI thread created:", thread.id);
+    } catch (threadError: any) {
+      console.error("[API Analyze] Failed to create thread:", threadError);
+      return NextResponse.json({
+        error: "Error creating analysis thread", 
+        details: threadError.message || "Unknown error"
+      }, { status: 500 });
+    }
 
-    await openai.beta.threads.messages.create(thread.id, {
-      role: "user",
-      content: userQuery,
-    });
-    console.log(`[API Analyze] User query added to thread ${thread.id}.`);
+    // Añadir el mensaje del usuario al thread
+    try {
+      await openai.beta.threads.messages.create(thread.id, {
+        role: "user",
+        content: userQuery,
+      });
+      console.log(`[API Analyze] User query added to thread ${thread.id}.`);
+    } catch (messageError: any) {
+      console.error(`[API Analyze] Failed to add message to thread ${thread.id}:`, messageError);
+      return NextResponse.json({
+        error: "Error adding message to thread", 
+        details: messageError.message || "Unknown error"
+      }, { status: 500 });
+    }
 
-    let run = await openai.beta.threads.runs.create(thread.id, {
-      assistant_id: ANALYSIS_ASSISTANT_ID,
-    });
-    console.log(`[API Analyze] Run ${run.id} created for thread ${thread.id} with assistant ${ANALYSIS_ASSISTANT_ID}`);
+    // Crear y ejecutar un run con el asistente de análisis
+    let run;
+    try {
+      run = await openai.beta.threads.runs.create(thread.id, {
+        assistant_id: ANALYSIS_ASSISTANT_ID,
+      });
+      console.log(`[API Analyze] Run ${run.id} created for thread ${thread.id} with assistant ${ANALYSIS_ASSISTANT_ID}`);
+    } catch (runError: any) {
+      console.error(`[API Analyze] Failed to create run for thread ${thread.id}:`, runError);
+      return NextResponse.json({
+        error: "Error creating assistant run", 
+        details: runError.message || "Unknown error"
+      }, { status: 500 });
+    }
 
-    const completedRun = await waitForRunCompletion(openai, thread.id, run.id);
+    // Esperar a que se complete el run
+    let completedRun;
+    try {
+      completedRun = await waitForRunCompletion(openai, thread.id, run.id);
+    } catch (waitError: any) {
+      console.error(`[API Analyze] Error waiting for run completion:`, waitError);
+      return NextResponse.json({
+        error: "Error waiting for assistant response", 
+        details: waitError.message || "Unknown error"
+      }, { status: 500 });
+    }
 
+    // Verificar el estado del run completado
     if (completedRun.status !== "completed") {
       console.error(
         `[API Analyze] Run ${run.id} not completed. Status: ${completedRun.status}. Error:`,
         completedRun.last_error
       );
       const errorMsg = completedRun.last_error?.message || `Assistant execution failed or incomplete (${completedRun.status}).`;
-      return NextResponse.json({ error: errorMsg, details: completedRun.last_error }, { status: 500 });
+      return NextResponse.json({ error: errorMsg, details: completedRun.last_error || "No error details available" }, { status: 500 });
     }
     console.log(`[API Analyze] Run ${run.id} completed successfully.`);
 
-    const messagesPage = await openai.beta.threads.messages.list(thread.id, { order: "desc", limit: 5 });
+    // Obtener los mensajes del asistente
+    let messagesPage;
+    try {
+      messagesPage = await openai.beta.threads.messages.list(thread.id, { order: "desc", limit: 5 });
+    } catch (listError: any) {
+      console.error(`[API Analyze] Failed to list messages for thread ${thread.id}:`, listError);
+      return NextResponse.json({
+        error: "Error retrieving assistant messages", 
+        details: listError.message || "Unknown error"
+      }, { status: 500 });
+    }
+    
     const assistantMessages = messagesPage.data.filter(msg => msg.role === 'assistant');
     
+    // Extraer y devolver el análisis
     let analysisReport = "No se encontró una respuesta de análisis del asistente.";
-    if (assistantMessages.length > 0 && assistantMessages[0].content[0]?.type === 'text') {
-      analysisReport = assistantMessages[0].content[0].text.value;
-    } else if (assistantMessages.length > 0) {
-      console.warn("[API Analyze] Last assistant message was not text:", assistantMessages[0]);
+    if (assistantMessages.length > 0) {
+      if (assistantMessages[0].content && assistantMessages[0].content.length > 0) {
+        const content = assistantMessages[0].content[0];
+        if (content.type === 'text') {
+          analysisReport = content.text.value;
+        } else {
+          console.warn("[API Analyze] Last assistant message was not text type:", content.type);
+        }
+      } else {
+        console.warn("[API Analyze] Assistant message has empty content");
+      }
+    } else {
+      console.warn(`[API Analyze] No assistant messages found for thread ${thread.id}`);
     }
     
     console.log(`[API Analyze] Analysis Report for thread ${thread.id}: ${analysisReport.substring(0, 200)}...`);
     return NextResponse.json({ analysis: analysisReport, threadId: thread.id });
 
   } catch (error: any) {
+    // Capturar y registrar cualquier error no manejado
     console.error("[API Analyze] Unhandled error in POST /api/analyze:", error);
-    return NextResponse.json({ error: "Internal server error during analysis", details: error.message }, { status: 500 });
+    return NextResponse.json({ 
+      error: "Internal server error during analysis", 
+      details: error.message || "Unknown error",
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    }, { 
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
   }
 }
