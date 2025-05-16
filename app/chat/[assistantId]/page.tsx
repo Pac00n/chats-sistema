@@ -156,7 +156,6 @@ function ChatPageContent() {
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         let eolIndex;
-        // CRITICAL LINE CORRECTED FOR THE FINAL TIME (HOPEFULLY)
         while ((eolIndex = buffer.indexOf('
 
 ')) !== -1) { 
