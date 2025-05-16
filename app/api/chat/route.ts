@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
         
         const fileObject = await openai.files.create({
           file: new File([imageBuffer], fileName, { type: mimeType }),
-          purpose: "vision", // or "assistants" if for retrieval/code_interpreter with Assistants API
+          purpose: "vision",
         });
         fileId = fileObject.id;
         console.log(`[API Chat] Image uploaded successfully. File ID: ${fileId}`);
@@ -126,14 +126,10 @@ export async function POST(req: NextRequest) {
       messageContentList.push({ type: "text", text: message });
     }
     if (fileId) {
-      // For Assistants API, images for "vision" purpose are typically included as image_url or image_file in content.
-      // If the assistant is using "retrieval" or "code_interpreter" with this file, it should be attached to the assistant or message with purpose "assistants".
-      // For vision with assistants, the `image_file` type is correct for message content.
       messageContentList.push({ type: "image_file", image_file: { file_id: fileId } });
     }
     
     if (messageContentList.length === 0) {
-       // Should not happen due to earlier validation, but as a safeguard:
       return NextResponse.json({ error: "Cannot send an empty message" }, { status: 400 });
     }
 
@@ -142,7 +138,6 @@ export async function POST(req: NextRequest) {
       const createdUserMessage = await openai.beta.threads.messages.create(currentThreadId, {
         role: "user",
         content: messageContentList,
-        // attachments: fileId ? [{ file_id: fileId, tools: [{type: "code_interpreter"}, {type: "file_search"}] }] : undefined, // Use attachments if file is for tools
       });
       openAIUserMessageId = createdUserMessage.id;
       console.log(`[API Chat] User message added to thread ${currentThreadId}. OpenAI Message ID: ${openAIUserMessageId}`);
@@ -152,7 +147,7 @@ export async function POST(req: NextRequest) {
           thread_id: currentThreadId,
           message_openai_id: openAIUserMessageId,
           role: 'user',
-          content: message || (fileId ? "[Image Sent]" : "[Empty Message]"), // Use actual message or placeholder
+          content: message || (fileId ? "[Image Sent]" : "[Empty Message]"),
           assistant_id: assistantConfig.id, 
           employee_token: employeeToken, 
           image_file_id: fileId,
@@ -172,7 +167,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ---- MODIFIED PART FOR STREAMING ----
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
@@ -182,7 +176,7 @@ export async function POST(req: NextRequest) {
           });
 
           for await (const event of runStream) {
-            const payload = { type: event.event, data: event.data, threadId: currentThreadId }; // Include threadId for client if needed
+            const payload = { type: event.event, data: event.data, threadId: currentThreadId }; 
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}
 
 `));
@@ -194,8 +188,9 @@ export async function POST(req: NextRequest) {
                 if (assistantMessage.content) {
                   for (const contentPart of assistantMessage.content) {
                     if (contentPart.type === 'text') {
+                      // Corrected line for newline character
                       assistantReplyContent += contentPart.text.value + "
-";
+"; 
                     }
                   }
                 }
@@ -206,7 +201,7 @@ export async function POST(req: NextRequest) {
                   message_openai_id: assistantMessage.id,
                   role: 'assistant',
                   content: assistantReplyContent || "[No text content in assistant message]",
-                  assistant_id: assistantConfig.id, // Your internal assistant ID
+                  assistant_id: assistantConfig.id, 
                   employee_token: employeeToken,
                   created_at: new Date().toISOString(),
                 };
@@ -229,7 +224,6 @@ export async function POST(req: NextRequest) {
         } catch (streamError: any) {
           console.error("[API Chat] Error during OpenAI stream:", streamError);
           try {
-            // Attempt to send an error event through SSE if stream hasn't closed
             const errorPayload = { type: "error", data: { message: "Stream error", details: streamError.message }, threadId: currentThreadId };
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorPayload)}
 
@@ -237,7 +231,7 @@ export async function POST(req: NextRequest) {
           } catch (enqueueError) {
             console.error("[API Chat] Failed to enqueue stream error event:", enqueueError);
           }
-          controller.close(); // Ensure controller is closed on error
+          controller.close(); 
         }
       }
     });
@@ -247,10 +241,6 @@ export async function POST(req: NextRequest) {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
-        // Add CORS headers if your frontend is on a different domain/port during local dev
-        // 'Access-Control-Allow-Origin': '*', 
-        // 'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        // 'Access-Control-Allow-Headers': 'Content-Type',
       }
     });
 

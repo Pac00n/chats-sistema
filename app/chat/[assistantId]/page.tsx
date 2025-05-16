@@ -74,16 +74,14 @@ function ChatPageContent() {
 
   useEffect(() => {
     if (!employeeToken.current) {
-      // If no token in ref, try to get from localStorage if it was set by a previous load of this page with token
       const potentialToken = localStorage.getItem("lastKnownEmployeeToken");
       if(potentialToken) employeeToken.current = potentialToken;
       else {
-        showWelcomeMessage(); // No token, show welcome, handleSubmit will be blocked.
+        showWelcomeMessage(); 
         return;
       }
     }
     
-    // Store the current token for future loads if it's different
     if (employeeTokenFromUrl && localStorage.getItem("lastKnownEmployeeToken") !== employeeTokenFromUrl) {
         localStorage.setItem("lastKnownEmployeeToken", employeeTokenFromUrl);
     }
@@ -226,7 +224,9 @@ function ChatPageContent() {
 
         buffer += decoder.decode(value, { stream: true });
         let eolIndex;
-        // Corrected line with double backslash for the newlines
+        // Corrected line with double backslash for the newlines to ensure it's a literal 
+
+ in the final JS string for indexOf
         while ((eolIndex = buffer.indexOf('
 
 ')) !== -1) { 
@@ -322,7 +322,7 @@ function ChatPageContent() {
         setImageBase64(currentImageBase64);
       }
     } finally {
-      if (!(signal.aborted && isLoading)) { // if not aborted by a new request while still loading
+      if (!(signal.aborted && isLoading)) { 
         setIsLoading(false); 
       }
     }
