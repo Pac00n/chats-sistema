@@ -165,8 +165,7 @@ export async function POST(req: NextRequest) {
                 if (assistantMessage.content) {
                   for (const contentPart of assistantMessage.content) {
                     if (contentPart.type === 'text') {
-                      assistantReplyContent += contentPart.text.value + "
-";
+                      assistantReplyContent += contentPart.text.value + "\n";
                     }
                   }
                 }
