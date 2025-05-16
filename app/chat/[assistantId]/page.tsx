@@ -91,10 +91,10 @@ function ChatPageContent() {
             const parsedMessages = JSON.parse(storedMessages);
             const messagesWithDates = parsedMessages.map((msg: any) => ({ ...msg, timestamp: new Date(msg.timestamp), isStreaming: false }));
             setMessages(messagesWithDates);
-          } catch (e) { showWelcomeMessage(); }
+          } catch (e) { console.error("Error loading messages:", e); showWelcomeMessage(); }
         } else { showWelcomeMessage(); }
       } else { showWelcomeMessage(); }
-    } catch (e) { showWelcomeMessage(); }
+    } catch (e) { console.error("Error initializing chat:", e); showWelcomeMessage(); }
   }, [assistantId, showWelcomeMessage, employeeTokenFromUrl]);
 
   useEffect(() => {
@@ -156,7 +156,7 @@ function ChatPageContent() {
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         let eolIndex;
-        // Corrected line for the SSE delimiter
+        // CRITICAL LINE CORRECTED FOR THE FINAL TIME (HOPEFULLY)
         while ((eolIndex = buffer.indexOf('
 
 ')) !== -1) { 
